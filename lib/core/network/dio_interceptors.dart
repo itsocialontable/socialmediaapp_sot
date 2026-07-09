@@ -1,13 +1,22 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
+import '../../main.dart';
+import '../providers/auth_provider.dart';
 import '../services/token_service.dart';
+import 'dio_client.dart';
 
 // ─── Auth Token Interceptor ───────────────────────────────────────────────────
 class AuthInterceptor extends Interceptor {
+  // Prevents multiple simultaneous 401s from triggering the redirect repeatedly.
+  static bool _isHandlingUnauthorized = false;
+
   @override
   Future<void> onRequest(
-    RequestOptions options,
-    RequestInterceptorHandler handler,
-  ) async {
+      RequestOptions options,
+      RequestInterceptorHandler handler,
+      ) async {
     final token = await TokenService.getToken();
     if (token != null && token.isNotEmpty) {
       options.headers['Authorization'] = 'Bearer $token';
@@ -16,8 +25,42 @@ class AuthInterceptor extends Interceptor {
   }
 
   @override
-  void onError(DioException err, ErrorInterceptorHandler handler) {
+  void onError(DioException err, ErrorInterceptorHandler handler) async {
+    final statusCode = err.response?.statusCode;
+
+    if (statusCode == 401) {
+      await _handleUnauthorized();
+    }
+
     handler.next(err);
+  }
+
+  Future<void> _handleUnauthorized() async {
+    if (_isHandlingUnauthorized) return;
+    _isHandlingUnauthorized = true;
+
+    try {
+      // Clear stored token/session so future requests don't keep resending it.
+      await TokenService.clearAll();
+      DioClient.reset();
+
+      final context = rootNavigatorKey.currentContext;
+      if (context != null) {
+        // Reset app-level auth state (isLoggedIn = false, etc.)
+        Provider.of<AuthProvider>(context, listen: false).logout();
+
+        // Kick the user back to the welcome/login flow.
+        GoRouter.of(context).go('/welcome');
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Session expired. Please log in again.'),
+          ),
+        );
+      }
+    } finally {
+      _isHandlingUnauthorized = false;
+    }
   }
 }
 
