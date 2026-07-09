@@ -1,0 +1,464 @@
+import 'dart:developer';
+import 'dart:io';
+import 'package:dio/dio.dart';
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+import '../../../../core/theme/app_theme.dart';
+import '../../../../core/network/api_service.dart';
+import '../../../../core/constants/app_constants.dart';
+import '../../../../core/errors/app_exceptions.dart';
+import '../smm_dashboard_screen.dart';
+
+// ─────────────────────────────────────────
+// PLATFORM OPTION
+// ─────────────────────────────────────────
+class PlatformOption {
+  final String id, name;
+  final Color color;
+  final IconData icon;
+  const PlatformOption(this.id, this.name, this.color, this.icon);
+}
+
+// ─────────────────────────────────────────
+// CREATE POST PAGE
+// ─────────────────────────────────────────
+class CreatePostPage extends StatefulWidget {
+  const CreatePostPage({super.key});
+
+  @override
+  State<CreatePostPage> createState() => _CreatePostPageState();
+}
+
+class _CreatePostPageState extends State<CreatePostPage> {
+  final _contentCtrl = TextEditingController();
+  DateTime? _scheduledAt;
+  final Set<String> _selectedPlatforms = {};
+  bool _isCreating = false;
+  bool _isSavingDraft = false;
+  XFile? _pickedFile;
+  final _apiService = ApiService();
+  final _imagePicker = ImagePicker();
+
+  final _platforms = const [
+    PlatformOption('instagram', 'Instagram', Color(0xFFE1306C), Icons.camera_alt_rounded),
+    PlatformOption('facebook', 'Facebook', Color(0xFF1877F2), Icons.facebook_rounded),
+    PlatformOption('twitter', 'Twitter / X', Color(0xFF1DA1F2), Icons.alternate_email_rounded),
+    PlatformOption('linkedin', 'LinkedIn', Color(0xFF0A66C2), Icons.work_rounded),
+    PlatformOption('pinterest', 'Pinterest', Color(0xFFE60023), Icons.push_pin_rounded),
+  ];
+
+  @override
+  void dispose() {
+    _contentCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickMedia() async {
+    final picked = await _imagePicker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+    if (picked != null) setState(() => _pickedFile = picked);
+  }
+
+  void _removeMedia() => setState(() => _pickedFile = null);
+
+  Future<void> _pickDateTime() async {
+    final date = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now().add(const Duration(hours: 1)),
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      builder: (ctx, child) => Theme(
+        data: Theme.of(ctx).copyWith(
+            colorScheme: const ColorScheme.dark(primary: AppColors.smmColor, surface: AppColors.surface)),
+        child: child!,
+      ),
+    );
+    if (date == null) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.now(),
+      builder: (ctx, child) => Theme(
+        data: Theme.of(ctx).copyWith(
+            colorScheme: const ColorScheme.dark(primary: AppColors.smmColor, surface: AppColors.surface)),
+        child: child!,
+      ),
+    );
+    if (time == null) return;
+    setState(() => _scheduledAt = DateTime(date.year, date.month, date.day, time.hour, time.minute));
+    log("Selected: $_scheduledAt");
+  }
+
+  PostModel _buildPost() => PostModel(
+    id: DateTime.now().millisecondsSinceEpoch.toString(),
+    content: _contentCtrl.text.trim(),
+    platforms: _selectedPlatforms.toList(),
+    scheduledAt: _scheduledAt,
+    hasMedia: _pickedFile != null,
+    createdAt: DateTime.now(),
+  );
+
+  String? _validate() {
+    if (_contentCtrl.text.trim().isEmpty) return 'Please write some content before posting.';
+    if (_selectedPlatforms.isEmpty) return 'Select at least one platform.';
+    return null;
+  }
+
+  void _showSnack(BuildContext ctx, {required String message, required Color color, required IconData icon}) {
+    ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
+      content: Row(children: [
+        Icon(icon, color: Colors.white, size: 18),
+        const SizedBox(width: 8),
+        Expanded(child: Text(message, style: GoogleFonts.sora(fontSize: 13), maxLines: 2, overflow: TextOverflow.ellipsis)),
+      ]),
+      backgroundColor: color,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+    ));
+  }
+
+  Future<void> _createPost(BuildContext ctx) async {
+    final error = _validate();
+    if (error != null) {
+      _showSnack(ctx, message: error, color: AppColors.warning, icon: Icons.warning_amber_rounded);
+      return;
+    }
+    setState(() => _isCreating = true);
+    try {
+      if (_pickedFile != null) {
+        final formData = FormData.fromMap({
+          'content': _contentCtrl.text.trim(),
+          for (int i = 0; i < _selectedPlatforms.length; i++) 'platforms[$i]': _selectedPlatforms.elementAt(i),
+          if (_scheduledAt != null)
+            'scheduleDate':
+            DateFormat('yyyy-MM-dd').format(_scheduledAt!),
+
+          if (_scheduledAt != null)
+            'scheduleTime':
+            DateFormat('HH:mm').format(_scheduledAt!),
+          'media': await MultipartFile.fromFile(_pickedFile!.path, filename: _pickedFile!.name),
+        });
+        await _apiService.postMultipart(AppConstants.createPost, formData: formData);
+      } else {
+        final body = <String, dynamic>{
+          'content': _contentCtrl.text.trim(),
+          'platforms': _selectedPlatforms.toList(),
+          if (_scheduledAt != null)
+            'scheduleDate':
+            DateFormat('yyyy-MM-dd').format(_scheduledAt!),
+
+          if (_scheduledAt != null)
+            'scheduleTime':
+            DateFormat('HH:mm').format(_scheduledAt!),
+        };
+        await _apiService.post(AppConstants.createPost, body: body);
+      }
+      final provider = ctx.read<PostsProvider>();
+      provider.addToQueue(_buildPost());
+      if (ctx.mounted) {
+        Navigator.pop(ctx);
+        _showSnack(ctx, message: 'Post added to queue!', color: AppColors.success, icon: Icons.check_circle_rounded);
+      }
+    } on ValidationException catch (e) {
+      if (ctx.mounted) _showSnack(ctx, message: e.message, color: AppColors.warning, icon: Icons.warning_amber_rounded);
+    } on UnauthorizedException catch (_) {
+      if (ctx.mounted) _showSnack(ctx, message: 'Session expired. Please log in again.', color: AppColors.error, icon: Icons.lock_outline_rounded);
+    } on NetworkException catch (_) {
+      if (ctx.mounted) _showSnack(ctx, message: 'No internet connection. Please try again.', color: AppColors.error, icon: Icons.wifi_off_rounded);
+    } on TimeoutException catch (_) {
+      if (ctx.mounted) _showSnack(ctx, message: 'Request timed out. Please try again.', color: AppColors.error, icon: Icons.timer_off_outlined);
+    } on AppException catch (e) {
+      if (ctx.mounted) _showSnack(ctx, message: e.message, color: AppColors.error, icon: Icons.error_outline_rounded);
+    } catch (e) {
+      if (ctx.mounted) _showSnack(ctx, message: 'Something went wrong. Please try again.', color: AppColors.error, icon: Icons.error_outline_rounded);
+    } finally {
+      if (mounted) setState(() => _isCreating = false);
+    }
+  }
+
+  Future<void> _saveDraft(BuildContext ctx) async {
+    if (_contentCtrl.text.trim().isEmpty) {
+      _showSnack(ctx, message: 'Write some content before saving a draft.', color: AppColors.warning, icon: Icons.warning_amber_rounded);
+      return;
+    }
+    setState(() => _isSavingDraft = true);
+    try {
+      if (_pickedFile != null) {
+        final formData = FormData.fromMap({
+          'content': _contentCtrl.text.trim(),
+          for (int i = 0; i < _selectedPlatforms.length; i++) 'platforms[$i]': _selectedPlatforms.elementAt(i),
+          'media': await MultipartFile.fromFile(_pickedFile!.path, filename: _pickedFile!.name),
+        });
+        await _apiService.postMultipart(AppConstants.saveDraftPost, formData: formData);
+      } else {
+        final body = <String, dynamic>{
+          'content': _contentCtrl.text.trim(),
+          'platforms': _selectedPlatforms.toList(),
+        };
+        await _apiService.post(AppConstants.saveDraftPost, body: body);
+      }
+      final provider = ctx.read<PostsProvider>();
+      provider.saveDraft(_buildPost());
+      if (ctx.mounted) {
+        Navigator.pop(ctx);
+        _showSnack(ctx, message: 'Draft saved successfully!', color: const Color(0xFF6C63FF), icon: Icons.bookmark_rounded);
+      }
+    } on ValidationException catch (e) {
+      if (ctx.mounted) _showSnack(ctx, message: e.message, color: AppColors.warning, icon: Icons.warning_amber_rounded);
+    } on UnauthorizedException catch (_) {
+      if (ctx.mounted) _showSnack(ctx, message: 'Session expired. Please log in again.', color: AppColors.error, icon: Icons.lock_outline_rounded);
+    } on NetworkException catch (_) {
+      if (ctx.mounted) _showSnack(ctx, message: 'No internet connection. Please try again.', color: AppColors.error, icon: Icons.wifi_off_rounded);
+    } on TimeoutException catch (_) {
+      if (ctx.mounted) _showSnack(ctx, message: 'Request timed out. Please try again.', color: AppColors.error, icon: Icons.timer_off_outlined);
+    } on AppException catch (e) {
+      if (ctx.mounted) _showSnack(ctx, message: e.message, color: AppColors.error, icon: Icons.error_outline_rounded);
+    } catch (e) {
+      if (ctx.mounted) _showSnack(ctx, message: 'Something went wrong. Please try again.', color: AppColors.error, icon: Icons.error_outline_rounded);
+    } finally {
+      if (mounted) setState(() => _isSavingDraft = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.surface,
+      appBar: AppBar(
+        backgroundColor: AppColors.surface,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.close_rounded, color: AppColors.textSecondary),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: ShaderMask(
+          shaderCallback: (b) => AppColors.smmGradient.createShader(b),
+          child: Text('Create Post', style: GoogleFonts.sora(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white)),
+        ),
+        bottom: const PreferredSize(
+          preferredSize: Size.fromHeight(1),
+          child: Divider(color: AppColors.border, height: 1),
+        ),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          // Platforms
+          _secLabel('Platforms'),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8, runSpacing: 8,
+            children: _platforms.map((p) {
+              final sel = _selectedPlatforms.contains(p.id);
+              return GestureDetector(
+                onTap: () => setState(() => sel ? _selectedPlatforms.remove(p.id) : _selectedPlatforms.add(p.id)),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: sel ? p.color.withOpacity(0.18) : AppColors.surfaceLight,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: sel ? p.color : AppColors.border),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(p.icon, color: sel ? p.color : AppColors.textSecondary, size: 16),
+                      const SizedBox(width: 6),
+                      Text(p.name, style: GoogleFonts.sora(fontSize: 12, fontWeight: FontWeight.w600, color: sel ? p.color : AppColors.textSecondary)),
+                    ],
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 20),
+
+          // Content
+          _secLabel('Content'),
+          const SizedBox(height: 10),
+          _textArea(_contentCtrl, 'Write your post content here...', 5),
+          const SizedBox(height: 20),
+
+          // Schedule
+          _secLabel('Schedule'),
+          const SizedBox(height: 10),
+          GestureDetector(
+            onTap: _pickDateTime,
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceLight,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: _scheduledAt != null ? AppColors.smmColor : AppColors.border),
+              ),
+              child: Row(children: [
+                Icon(Icons.calendar_month_rounded, color: _scheduledAt != null ? AppColors.smmColor : AppColors.textMuted, size: 18),
+                const SizedBox(width: 10),
+                Text(
+                  _scheduledAt != null
+                      ? '${_scheduledAt!.day}/${_scheduledAt!.month}/${_scheduledAt!.year}  ${_scheduledAt!.hour.toString().padLeft(2, '0')}:${_scheduledAt!.minute.toString().padLeft(2, '0')}'
+                      : 'Select date & time',
+                  style: GoogleFonts.sora(fontSize: 13, color: _scheduledAt != null ? AppColors.textPrimary : AppColors.textMuted),
+                ),
+                const Spacer(),
+                if (_scheduledAt != null)
+                  GestureDetector(
+                    onTap: () => setState(() => _scheduledAt = null),
+                    child: const Icon(Icons.close_rounded, color: AppColors.textMuted, size: 16),
+                  ),
+              ]),
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // Media
+          _secLabel('Media'),
+          const SizedBox(height: 10),
+          if (_pickedFile != null) ...[
+            Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: Image.file(File(_pickedFile!.path), height: 160, width: double.infinity, fit: BoxFit.cover),
+                ),
+                Positioned(
+                  top: 8, right: 8,
+                  child: GestureDetector(
+                    onTap: _removeMedia,
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(color: Colors.black.withOpacity(0.65), shape: BoxShape.circle),
+                      child: const Icon(Icons.close_rounded, color: Colors.white, size: 16),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  bottom: 8, right: 8,
+                  child: GestureDetector(
+                    onTap: _pickMedia,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(color: Colors.black.withOpacity(0.65), borderRadius: BorderRadius.circular(8)),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.swap_horiz_rounded, color: Colors.white, size: 14),
+                          const SizedBox(width: 4),
+                          Text('Replace', style: GoogleFonts.sora(fontSize: 11, color: Colors.white)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ] else ...[
+            GestureDetector(
+              onTap: _pickMedia,
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceLight,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Column(children: [
+                  const Icon(Icons.add_photo_alternate_outlined, color: AppColors.textMuted, size: 32),
+                  const SizedBox(height: 8),
+                  Text('Tap to add image / video', style: GoogleFonts.sora(fontSize: 12, color: AppColors.textMuted)),
+                ]),
+              ),
+            ),
+          ],
+          const SizedBox(height: 28),
+
+          // Action Buttons
+          Row(
+            children: [
+              // Save Draft
+              Expanded(
+                child: GestureDetector(
+                  onTap: (_isSavingDraft || _isCreating) ? null : () => _saveDraft(context),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.symmetric(vertical: 15),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceLight,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: (_isSavingDraft || _isCreating) ? AppColors.border : const Color(0xFF6C63FF).withOpacity(0.5)),
+                    ),
+                    alignment: Alignment.center,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        if (_isSavingDraft)
+                          const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF6C63FF)))
+                        else
+                          const Icon(Icons.bookmark_border_rounded, color: Color(0xFF6C63FF), size: 18),
+                        const SizedBox(width: 7),
+                        Text(
+                          _isSavingDraft ? 'Saving…' : 'Save Draft',
+                          style: GoogleFonts.sora(fontSize: 14, fontWeight: FontWeight.w600, color: (_isSavingDraft || _isCreating) ? AppColors.textMuted : const Color(0xFF6C63FF)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              // Create Post
+              Expanded(
+                child: GestureDetector(
+                  onTap: (_isCreating || _isSavingDraft) ? null : () => _createPost(context),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.symmetric(vertical: 15),
+                    decoration: BoxDecoration(
+                      gradient: (_isCreating || _isSavingDraft) ? null : AppColors.smmGradient,
+                      color: (_isCreating || _isSavingDraft) ? AppColors.surfaceLight : null,
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: (_isCreating || _isSavingDraft) ? [] : [BoxShadow(color: AppColors.smmColor.withOpacity(0.4), blurRadius: 14, offset: const Offset(0, 5))],
+                    ),
+                    alignment: Alignment.center,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        if (_isCreating)
+                          const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        else
+                          Icon(Icons.send_rounded, color: _isSavingDraft ? AppColors.textMuted : Colors.white, size: 18),
+                        const SizedBox(width: 7),
+                        Text(
+                          _isCreating ? 'Posting…' : 'Create Post',
+                          style: GoogleFonts.sora(fontSize: 14, fontWeight: FontWeight.w700, color: (_isCreating || _isSavingDraft) ? AppColors.textMuted : Colors.white),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 40),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Helpers ───
+Widget _secLabel(String t) => Text(t, style: GoogleFonts.sora(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textSecondary));
+
+Widget _textArea(TextEditingController c, String hint, int lines) => Container(
+  decoration: BoxDecoration(color: AppColors.surfaceLight, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.border)),
+  child: TextField(
+    controller: c, maxLines: lines,
+    style: GoogleFonts.sora(fontSize: 13, color: AppColors.textPrimary),
+    decoration: InputDecoration(
+      hintText: hint, hintStyle: GoogleFonts.sora(fontSize: 13, color: AppColors.textMuted),
+      border: InputBorder.none, contentPadding: const EdgeInsets.all(14),
+    ),
+  ),
+);
