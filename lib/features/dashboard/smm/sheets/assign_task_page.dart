@@ -91,7 +91,7 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
   Future<void> _fetchClients() async {
     setState(() { _clientsLoading = true; _clientsError = null; });
     try {
-      final res = await _api.get(AppConstants.adminClients);
+      final res = await _api.get(AppConstants.smmClients);
       final data = res['data'];
       final raw = (data is Map ? data['clients'] : null) ?? res['clients'] ?? res['users'] ?? res['data'] ?? res;
       final list = raw is List ? raw.cast<Map<String, dynamic>>() : <Map<String, dynamic>>[];
@@ -110,7 +110,7 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
   Future<void> _fetchDesigners() async {
     setState(() { _designersLoading = true; _designersError = null; });
     try {
-      final res = await _api.get(AppConstants.adminGraphicDesigners);
+      final res = await _api.get(AppConstants.smmGraphicDesigners);
       final data = res['data'];
       final raw = (data is Map ? data['designers'] : null) ?? res['designers'] ?? res['users'] ?? res['data'] ?? res;
       final list = raw is List ? raw.cast<Map<String, dynamic>>() : <Map<String, dynamic>>[];

@@ -20,6 +20,10 @@ class AdminUserModel {
   final String? address;
   final String? specialization;
   final String? status;
+  final String? projectTitle;
+  final String? duration;
+  final String? gstNumber;
+  final List<String> platform;
 
   const AdminUserModel({
     required this.id,
@@ -33,6 +37,10 @@ class AdminUserModel {
     this.address,
     this.specialization,
     this.status,
+    this.projectTitle,
+    this.duration,
+    this.gstNumber,
+    this.platform = const [],
   });
 
   factory AdminUserModel.fromJson(Map<String, dynamic> json) {
@@ -50,6 +58,12 @@ class AdminUserModel {
           ? (json['specialization'] as List).join(', ')
           : json['specialization']?.toString(),
       status:         json['status']?.toString() ?? 'Active',
+      projectTitle:   json['projectTitle']?.toString(),
+      duration:       json['duration']?.toString(),
+      gstNumber:      json['gstNumber']?.toString(),
+      platform:       json['platform'] is List
+          ? (json['platform'] as List).map((e) => e.toString().toLowerCase()).toList()
+          : <String>[],
     );
   }
 
@@ -65,6 +79,10 @@ class AdminUserModel {
     'address':       address,
     'specialization': specialization,
     'status':        status,
+    'projectTitle':  projectTitle,
+    'duration':      duration,
+    'gstNumber':     gstNumber,
+    'platform':      platform,
   };
 
   AdminUserModel copyWith({
@@ -77,6 +95,10 @@ class AdminUserModel {
     String? address,
     String? specialization,
     String? status,
+    String? projectTitle,
+    String? duration,
+    String? gstNumber,
+    List<String>? platform,
   }) {
     return AdminUserModel(
       id:             id,
@@ -90,6 +112,10 @@ class AdminUserModel {
       address:        address ?? this.address,
       specialization: specialization ?? this.specialization,
       status:         status ?? this.status,
+      projectTitle:   projectTitle ?? this.projectTitle,
+      duration:       duration ?? this.duration,
+      gstNumber:      gstNumber ?? this.gstNumber,
+      platform:       platform ?? this.platform,
     );
   }
 

@@ -47,53 +47,52 @@ class SocialPlatformModel {
     return 'Not connected';
   }
 
-  static const List<SocialPlatformModel> supportedPlatforms = [
-    SocialPlatformModel(
-      platform: 'instagram',
-      name: 'Instagram',
-      icon: Icons.camera_alt,
-      color: Color(0xFFE1306C),
-    ),
-    SocialPlatformModel(
-      platform: 'youtube',
-      name: 'YouTube',
-      icon: Icons.play_circle_fill,
-      color: Color(0xFFFF0000),
-    ),
-    SocialPlatformModel(
-      platform: 'linkedin',
-      name: 'LinkedIn',
-      icon: Icons.business,
-      color: Color(0xFF0A66C2),
-    ),
-    SocialPlatformModel(
-      platform: 'twitter',
-      name: 'Twitter',
-      icon: Icons.alternate_email,
-      color: Color(0xFF1DA1F2),
-    ),
-    SocialPlatformModel(
-      platform: 'facebook',
-      name: 'Facebook',
-      icon: Icons.facebook,
-      color: Color(0xFF1877F2),
-    ),
-  ];
+  /// Known platform → (label, color, icon) lookup, used only to style
+  /// whatever platform key comes back from the API. This does NOT decide
+  /// which platforms are shown — that list comes entirely from the API.
+  static const Map<String, _PlatformMeta> _meta = {
+    'instagram': _PlatformMeta('Instagram', Color(0xFFE1306C), Icons.camera_alt),
+    'facebook': _PlatformMeta('Facebook', Color(0xFF1877F2), Icons.facebook),
+    'twitter': _PlatformMeta('Twitter / X', Color(0xFF1DA1F2), Icons.alternate_email),
+    'x': _PlatformMeta('Twitter / X', Color(0xFF1DA1F2), Icons.alternate_email),
+    'linkedin': _PlatformMeta('LinkedIn', Color(0xFF0A66C2), Icons.business),
+    'youtube': _PlatformMeta('YouTube', Color(0xFFFF0000), Icons.play_circle_fill),
+    'pinterest': _PlatformMeta('Pinterest', Color(0xFFE60023), Icons.push_pin),
+    'threads': _PlatformMeta('Threads', Color(0xFF000000), Icons.tag),
+  };
 
   factory SocialPlatformModel.fromConnectedAccountJson(Map<String, dynamic> json) {
-    final platform = (json['platform'] ?? json['network'] ?? '').toString().toLowerCase();
-    final accountId = json['id']?.toString() ?? json['accountId']?.toString();
+    final key = (json['platform'] ?? json['network'] ?? '').toString().toLowerCase();
+    final meta = _meta[key] ?? _PlatformMeta(key.isEmpty ? 'Unknown' : key, const Color(0xFF607D8B), Icons.public);
+
+    final accountId = json['id']?.toString() ?? json['accountId']?.toString() ?? json['_id']?.toString();
     final connectedAs = json['username']?.toString() ?? json['name']?.toString() ?? json['displayName']?.toString();
 
+    // The API item itself decides connected/not — default to true only
+    // when there's no explicit flag (e.g. it appeared in a "connected"
+    // sub-list without its own status field).
+    final connected = json.containsKey('connected')
+        ? json['connected'] == true
+        : json.containsKey('status')
+        ? json['status'].toString().toLowerCase() == 'connected'
+        : true;
+
     return SocialPlatformModel(
-      platform: platform,
-      name: platform,
-      icon: Icons.public,
-      color: const Color(0xFF607D8B),
-      connected: true,
+      platform: key,
+      name: meta.label,
+      icon: meta.icon,
+      color: meta.color,
+      connected: connected,
       accountId: accountId,
       connectedAs: connectedAs,
-      statusMessage: connectedAs != null ? 'Connected as $connectedAs' : 'Connected',
+      statusMessage: connected ? (connectedAs != null ? 'Connected as $connectedAs' : 'Connected') : 'Not connected',
     );
   }
+}
+
+class _PlatformMeta {
+  final String label;
+  final Color color;
+  final IconData icon;
+  const _PlatformMeta(this.label, this.color, this.icon);
 }

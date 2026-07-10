@@ -11,6 +11,7 @@ import '../../../../core/network/api_service.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/errors/app_exceptions.dart';
 import '../smm_dashboard_screen.dart';
+import 'assign_task_page.dart' show UserOption;
 
 // ─────────────────────────────────────────
 // PLATFORM OPTION
@@ -19,7 +20,34 @@ class PlatformOption {
   final String id, name;
   final Color color;
   final IconData icon;
-  const PlatformOption(this.id, this.name, this.color, this.icon);
+  final String? connectedAs;
+  const PlatformOption(this.id, this.name, this.color, this.icon, {this.connectedAs});
+}
+
+// Known platform → (label, color, icon) lookup used to render whatever
+// platforms come back as "connected" for the selected client.
+class _PlatformMeta {
+  final String label;
+  final Color color;
+  final IconData icon;
+  const _PlatformMeta(this.label, this.color, this.icon);
+}
+
+const Map<String, _PlatformMeta> _kPlatformMeta = {
+  'instagram': _PlatformMeta('Instagram', Color(0xFFE1306C), Icons.camera_alt_rounded),
+  'facebook': _PlatformMeta('Facebook', Color(0xFF1877F2), Icons.facebook_rounded),
+  'twitter': _PlatformMeta('Twitter / X', Color(0xFF1DA1F2), Icons.alternate_email_rounded),
+  'linkedin': _PlatformMeta('LinkedIn', Color(0xFF0A66C2), Icons.work_rounded),
+  'pinterest': _PlatformMeta('Pinterest', Color(0xFFE60023), Icons.push_pin_rounded),
+  'youtube': _PlatformMeta('YouTube', Color(0xFFFF0000), Icons.play_circle_fill_rounded),
+  'threads': _PlatformMeta('Threads', Color(0xFF000000), Icons.tag_rounded),
+};
+
+PlatformOption _platformOptionFromJson(Map<String, dynamic> json) {
+  final key = (json['platform'] ?? json['network'] ?? '').toString().toLowerCase();
+  final meta = _kPlatformMeta[key] ?? _PlatformMeta(key.isEmpty ? 'Unknown' : key, AppColors.textMuted, Icons.public_rounded);
+  final connectedAs = json['username']?.toString() ?? json['name']?.toString() ?? json['displayName']?.toString();
+  return PlatformOption(key, meta.label, meta.color, meta.icon, connectedAs: connectedAs);
 }
 
 // ─────────────────────────────────────────
@@ -42,13 +70,240 @@ class _CreatePostPageState extends State<CreatePostPage> {
   final _apiService = ApiService();
   final _imagePicker = ImagePicker();
 
-  final _platforms = const [
-    PlatformOption('instagram', 'Instagram', Color(0xFFE1306C), Icons.camera_alt_rounded),
-    PlatformOption('facebook', 'Facebook', Color(0xFF1877F2), Icons.facebook_rounded),
-    PlatformOption('twitter', 'Twitter / X', Color(0xFF1DA1F2), Icons.alternate_email_rounded),
-    PlatformOption('linkedin', 'LinkedIn', Color(0xFF0A66C2), Icons.work_rounded),
-    PlatformOption('pinterest', 'Pinterest', Color(0xFFE60023), Icons.push_pin_rounded),
-  ];
+  // Client dropdown
+  List<UserOption> _clients = [];
+  bool _clientsLoading = true;
+  String? _clientsError;
+  UserOption? _selectedClient;
+
+  // Connected devices for the selected client (fetched from /api/social/accounts?clientId=)
+  List<PlatformOption> _platforms = [];
+  bool _accountsLoading = false;
+  String? _accountsError;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchClients();
+  }
+
+  Future<void> _fetchClients() async {
+    setState(() { _clientsLoading = true; _clientsError = null; });
+    try {
+      final res = await _apiService.get(AppConstants.smmClients);
+      final data = res['data'];
+      final raw = (data is Map ? data['clients'] : null) ?? res['clients'] ?? res['users'] ?? res['data'] ?? res;
+      final list = raw is List ? raw.cast<Map<String, dynamic>>() : <Map<String, dynamic>>[];
+      setState(() { _clients = list.map(UserOption.fromJson).toList(); _clientsLoading = false; });
+    } on NetworkException catch (_) {
+      setState(() { _clientsError = 'No internet connection'; _clientsLoading = false; });
+    } on UnauthorizedException catch (_) {
+      setState(() { _clientsError = 'Session expired'; _clientsLoading = false; });
+    } on AppException catch (e) {
+      setState(() { _clientsError = e.message; _clientsLoading = false; });
+    } catch (_) {
+      setState(() { _clientsError = 'Failed to load clients'; _clientsLoading = false; });
+    }
+  }
+
+  Future<void> _fetchConnectedAccounts(String clientId) async {
+    setState(() { _accountsLoading = true; _accountsError = null; _platforms = []; });
+    try {
+      final res = await _apiService.get(AppConstants.socialAccount, queryParams: {'clientId': clientId});
+      final data = res['data'];
+      final raw = (data is List ? data : null) ?? (data is Map ? data['accounts'] : null) ?? res['accounts'] ?? res['data'] ?? res;
+      final list = raw is List ? raw.cast<Map<String, dynamic>>() : <Map<String, dynamic>>[];
+      setState(() { _platforms = list.map(_platformOptionFromJson).toList(); _accountsLoading = false; });
+    } on NetworkException catch (_) {
+      setState(() { _accountsError = 'No internet connection'; _accountsLoading = false; });
+    } on UnauthorizedException catch (_) {
+      setState(() { _accountsError = 'Session expired'; _accountsLoading = false; });
+    } on AppException catch (e) {
+      setState(() { _accountsError = e.message; _accountsLoading = false; });
+    } catch (_) {
+      setState(() { _accountsError = 'Failed to load connected accounts'; _accountsLoading = false; });
+    }
+  }
+
+  void _onClientChanged(UserOption? client) {
+    setState(() {
+      _selectedClient = client;
+      _selectedPlatforms.clear();
+      _platforms = [];
+      _accountsError = null;
+    });
+    if (client != null) _fetchConnectedAccounts(client.id);
+  }
+
+  Widget _buildClientDropdown() {
+    if (_clientsLoading) {
+      return Container(
+        height: 48,
+        decoration: BoxDecoration(color: AppColors.surfaceLight, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
+        child: Row(children: [
+          const SizedBox(width: 14),
+          const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.smmColor)),
+          const SizedBox(width: 10),
+          Text('Loading clients...', style: GoogleFonts.sora(fontSize: 13, color: AppColors.textMuted)),
+        ]),
+      );
+    }
+    if (_clientsError != null) {
+      return Container(
+        height: 48,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: BoxDecoration(color: AppColors.error.withOpacity(0.06), borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.error.withOpacity(0.3))),
+        child: Row(children: [
+          const Icon(Icons.error_outline_rounded, size: 16, color: AppColors.error),
+          const SizedBox(width: 8),
+          Expanded(child: Text(_clientsError!, style: GoogleFonts.sora(fontSize: 12, color: AppColors.error), maxLines: 1, overflow: TextOverflow.ellipsis)),
+          GestureDetector(
+            onTap: _fetchClients,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(color: AppColors.error.withOpacity(0.12), borderRadius: BorderRadius.circular(8)),
+              child: Text('Retry', style: GoogleFonts.sora(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.error)),
+            ),
+          ),
+        ]),
+      );
+    }
+    if (_clients.isEmpty) {
+      return Container(
+        height: 48, padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: BoxDecoration(color: AppColors.surfaceLight, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
+        child: Row(children: [
+          const Icon(Icons.info_outline_rounded, size: 16, color: AppColors.textMuted),
+          const SizedBox(width: 8),
+          Text('No clients found', style: GoogleFonts.sora(fontSize: 13, color: AppColors.textMuted)),
+        ]),
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceLight, borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _selectedClient != null ? AppColors.smmColor.withOpacity(0.6) : AppColors.border),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<UserOption>(
+          value: _selectedClient, isExpanded: true,
+          hint: Text('Select client...', style: GoogleFonts.sora(fontSize: 13, color: AppColors.textMuted)),
+          dropdownColor: AppColors.surface,
+          icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.textSecondary),
+          items: _clients.map((u) => DropdownMenuItem<UserOption>(
+            value: u,
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+              Text(u.name, style: GoogleFonts.sora(fontSize: 13, color: AppColors.textPrimary)),
+              if (u.email != null) Text(u.email!, style: GoogleFonts.sora(fontSize: 10, color: AppColors.textMuted), maxLines: 1, overflow: TextOverflow.ellipsis),
+            ]),
+          )).toList(),
+          onChanged: _onClientChanged,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildConnectedDevices() {
+    if (_selectedClient == null) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(color: AppColors.surfaceLight, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
+        child: Row(children: [
+          const Icon(Icons.info_outline_rounded, size: 16, color: AppColors.textMuted),
+          const SizedBox(width: 8),
+          Expanded(child: Text('Select a client to see their connected accounts', style: GoogleFonts.sora(fontSize: 12, color: AppColors.textMuted))),
+        ]),
+      );
+    }
+    if (_accountsLoading) {
+      return Container(
+        height: 48,
+        decoration: BoxDecoration(color: AppColors.surfaceLight, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
+        child: Row(children: [
+          const SizedBox(width: 14),
+          const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.smmColor)),
+          const SizedBox(width: 10),
+          Text('Loading connected devices...', style: GoogleFonts.sora(fontSize: 13, color: AppColors.textMuted)),
+        ]),
+      );
+    }
+    if (_accountsError != null) {
+      return Container(
+        height: 48,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: BoxDecoration(color: AppColors.error.withOpacity(0.06), borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.error.withOpacity(0.3))),
+        child: Row(children: [
+          const Icon(Icons.error_outline_rounded, size: 16, color: AppColors.error),
+          const SizedBox(width: 8),
+          Expanded(child: Text(_accountsError!, style: GoogleFonts.sora(fontSize: 12, color: AppColors.error), maxLines: 1, overflow: TextOverflow.ellipsis)),
+          GestureDetector(
+            onTap: () => _fetchConnectedAccounts(_selectedClient!.id),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(color: AppColors.error.withOpacity(0.12), borderRadius: BorderRadius.circular(8)),
+              child: Text('Retry', style: GoogleFonts.sora(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.error)),
+            ),
+          ),
+        ]),
+      );
+    }
+    if (_platforms.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.warning.withOpacity(0.06),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.warning.withOpacity(0.3)),
+        ),
+        child: Row(children: [
+          const Icon(Icons.link_off_rounded, size: 16, color: AppColors.warning),
+          const SizedBox(width: 8),
+          Expanded(child: Text('No connected device for this client', style: GoogleFonts.sora(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.warning))),
+        ]),
+      );
+    }
+    return Wrap(
+      spacing: 8, runSpacing: 8,
+      children: _platforms.map((p) {
+        final sel = _selectedPlatforms.contains(p.id);
+        return GestureDetector(
+          onTap: () => setState(() => sel ? _selectedPlatforms.remove(p.id) : _selectedPlatforms.add(p.id)),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: sel ? p.color.withOpacity(0.18) : AppColors.surfaceLight,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: sel ? p.color : AppColors.border),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(p.icon, color: sel ? p.color : AppColors.textSecondary, size: 16),
+                const SizedBox(width: 6),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(p.name, style: GoogleFonts.sora(fontSize: 12, fontWeight: FontWeight.w600, color: sel ? p.color : AppColors.textSecondary)),
+                    if (p.connectedAs != null)
+                      Text(p.connectedAs!, style: GoogleFonts.sora(fontSize: 9, color: sel ? p.color.withOpacity(0.8) : AppColors.textMuted)),
+                  ],
+                ),
+                if (sel) ...[
+                  const SizedBox(width: 6),
+                  Icon(Icons.check_circle_rounded, size: 13, color: p.color),
+                ],
+              ],
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
 
   @override
   void dispose() {
@@ -100,8 +355,9 @@ class _CreatePostPageState extends State<CreatePostPage> {
   );
 
   String? _validate() {
+    if (_selectedClient == null) return 'Please select a client.';
     if (_contentCtrl.text.trim().isEmpty) return 'Please write some content before posting.';
-    if (_selectedPlatforms.isEmpty) return 'Select at least one platform.';
+    if (_selectedPlatforms.isEmpty) return 'Select at least one connected platform.';
     return null;
   }
 
@@ -129,6 +385,7 @@ class _CreatePostPageState extends State<CreatePostPage> {
       if (_pickedFile != null) {
         final formData = FormData.fromMap({
           'content': _contentCtrl.text.trim(),
+          'clientId': _selectedClient!.id,
           for (int i = 0; i < _selectedPlatforms.length; i++) 'platforms[$i]': _selectedPlatforms.elementAt(i),
           if (_scheduledAt != null)
             'scheduleDate':
@@ -143,6 +400,7 @@ class _CreatePostPageState extends State<CreatePostPage> {
       } else {
         final body = <String, dynamic>{
           'content': _contentCtrl.text.trim(),
+          'clientId': _selectedClient!.id,
           'platforms': _selectedPlatforms.toList(),
           if (_scheduledAt != null)
             'scheduleDate':
@@ -187,6 +445,7 @@ class _CreatePostPageState extends State<CreatePostPage> {
       if (_pickedFile != null) {
         final formData = FormData.fromMap({
           'content': _contentCtrl.text.trim(),
+          if (_selectedClient != null) 'clientId': _selectedClient!.id,
           for (int i = 0; i < _selectedPlatforms.length; i++) 'platforms[$i]': _selectedPlatforms.elementAt(i),
           'media': await MultipartFile.fromFile(_pickedFile!.path, filename: _pickedFile!.name),
         });
@@ -194,6 +453,7 @@ class _CreatePostPageState extends State<CreatePostPage> {
       } else {
         final body = <String, dynamic>{
           'content': _contentCtrl.text.trim(),
+          if (_selectedClient != null) 'clientId': _selectedClient!.id,
           'platforms': _selectedPlatforms.toList(),
         };
         await _apiService.post(AppConstants.saveDraftPost, body: body);
@@ -244,35 +504,16 @@ class _CreatePostPageState extends State<CreatePostPage> {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          // Platforms
-          _secLabel('Platforms'),
+          // Client
+          _secLabel('Client'),
           const SizedBox(height: 10),
-          Wrap(
-            spacing: 8, runSpacing: 8,
-            children: _platforms.map((p) {
-              final sel = _selectedPlatforms.contains(p.id);
-              return GestureDetector(
-                onTap: () => setState(() => sel ? _selectedPlatforms.remove(p.id) : _selectedPlatforms.add(p.id)),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: sel ? p.color.withOpacity(0.18) : AppColors.surfaceLight,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: sel ? p.color : AppColors.border),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(p.icon, color: sel ? p.color : AppColors.textSecondary, size: 16),
-                      const SizedBox(width: 6),
-                      Text(p.name, style: GoogleFonts.sora(fontSize: 12, fontWeight: FontWeight.w600, color: sel ? p.color : AppColors.textSecondary)),
-                    ],
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
+          _buildClientDropdown(),
+          const SizedBox(height: 20),
+
+          // Platforms (connected devices for the selected client)
+          _secLabel('Connected Devices'),
+          const SizedBox(height: 10),
+          _buildConnectedDevices(),
           const SizedBox(height: 20),
 
           // Content

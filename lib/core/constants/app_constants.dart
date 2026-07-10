@@ -7,7 +7,7 @@ class AppConstants {
 
   // ── Admin ──────────────────────────────────────────────────────────────
   static const String adminDashboard = '/api/admin/dashboard';
-  static const String adminLogin = '/api/admin/login';
+  static const String adminLogin = '/api/agency/login';
 
   // ── Auth ───────────────────────────────────────────────────────────────
   static const String userLogin = '/api/user/login';
@@ -19,6 +19,7 @@ class AppConstants {
   static const String adminSmm              = '/api/admin/users/smm';
   static const String adminGraphicDesigners = '/api/admin/users/graphic-designers';
   static const String adminDeleteUser       = '/api/admin/users'; // DELETE /api/admin/users/:id
+  static const String adminUserDetail       = '/api/admin/users'; // GET /api/admin/users/:id
 
   // ── SMM ────────────────────────────────────────────────────────────────
   static const String smmDashboard        = '/api/smm/dashboard';
@@ -27,6 +28,8 @@ class AppConstants {
   static const String saveDraftPost       = '/api/posts/draft';
   static const String queuedPosts         = '/api/posts/queued';
   static const String draftPosts          = '/api/posts/drafts';
+  static const String smmClients          = '/api/smm/clients';
+  static const String smmGraphicDesigners = '/api/smm/graphic-designers';
   // ── Client ─────────────────────────────────────────────────────────────
   /// GET  /api/client/design-projects
   static const String clientDesignProjects = '/api/client/design-projects';

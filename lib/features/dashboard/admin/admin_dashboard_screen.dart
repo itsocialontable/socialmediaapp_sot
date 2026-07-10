@@ -236,7 +236,7 @@ class _AdminHomeState extends State<_AdminHome> {
             physics: const NeverScrollableScrollPhysics(),
             crossAxisCount: 2,
             crossAxisSpacing: 12, mainAxisSpacing: 12,
-            childAspectRatio: 1.2,
+            childAspectRatio: 1.0,
             children: [
               StatCard(
                 label: 'Total Clients',
