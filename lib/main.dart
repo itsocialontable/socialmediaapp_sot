@@ -12,7 +12,6 @@ import 'core/services/update_service.dart';
 import 'core/theme/app_theme.dart';
 import 'features/dashboard/smm/smm_dashboard_screen.dart';
 
-// Global key — poori app mein kahi se bhi dialog dikha sakte hain
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
