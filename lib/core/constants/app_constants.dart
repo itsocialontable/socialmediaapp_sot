@@ -54,7 +54,7 @@ class AppConstants {
   static const String socialConnect = "/api/social/connect";
   static const String socialDisconnect = "/api/social/disconnect";
   static const String redirectUri =
-      "https://overuse-abreast-paving.ngrok-free.dev/auth/callback";
+      "https://whacking-dispute-agility.ngrok-free.dev/auth/callback";
   static const String publishedPosts = '/api/posts/published';
 
   // ── Secure Storage Keys ────────────────────────────────────────────────

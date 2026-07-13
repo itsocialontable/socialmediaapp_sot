@@ -169,11 +169,22 @@ class SmmClientModel {
 
     // The platform list shown for this client comes straight from the API
     // response — nothing hardcoded/static here.
+    //
+    // Two shapes are supported, since /api/smm/clients returns platforms as
+    // plain strings (e.g. ["YouTube", "Instagram", "Facebook"]) while other
+    // endpoints (e.g. /api/smm/account) return connection objects
+    // (e.g. [{"platform": "youtube", "connected": true, ...}]).
     final platforms = list
         .whereType<Object>()
-        .map((raw) => raw is Map
-        ? SocialPlatformModel.fromConnectedAccountJson(Map<String, dynamic>.from(raw))
-        : null)
+        .map((raw) {
+      if (raw is Map) {
+        return SocialPlatformModel.fromConnectedAccountJson(Map<String, dynamic>.from(raw));
+      }
+      if (raw is String && raw.trim().isNotEmpty) {
+        return SocialPlatformModel.fromPlatformName(raw.trim());
+      }
+      return null;
+    })
         .whereType<SocialPlatformModel>()
         .toList();
 

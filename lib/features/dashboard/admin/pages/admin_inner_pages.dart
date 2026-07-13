@@ -1958,8 +1958,11 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
 
   late AdminUserModel _user = widget.initial;
   Map<String, dynamic> _rawExtra = const {};
+  String? _aboutText;
   bool _isLoading = true;
   String? _errorMsg;
+
+  static const _aboutKeys = {'about', 'aboutme', 'bio', 'notes', 'description', 'summary'};
 
   bool get _isClient => _user.role.isEmpty || _user.role == 'Client';
 
@@ -2000,13 +2003,19 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
         for (final entry in json.entries)
           if (!known.contains(entry.key) &&
               !internal.contains(entry.key) &&
+              !_aboutKeys.contains(entry.key.toLowerCase()) &&
               !_isEmptyValue(entry.value))
             entry.key: entry.value,
       };
+      final aboutEntry = json.entries.firstWhere(
+            (e) => _aboutKeys.contains(e.key.toLowerCase()) && !_isEmptyValue(e.value),
+        orElse: () => const MapEntry('', null),
+      );
 
       setState(() {
         _user = json.isEmpty ? widget.initial : AdminUserModel.fromJson(json);
         _rawExtra = extra;
+        _aboutText = aboutEntry.value?.toString();
         _isLoading = false;
       });
     } catch (e) {
@@ -2071,27 +2080,27 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: AppColors.background,
+        backgroundColor: accent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_rounded, color: AppColors.textSecondary, size: 18),
+          icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.white, size: 18),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
           _isClient ? 'Client Details' : 'Team Member Details',
-          style: GoogleFonts.sora(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+          style: GoogleFonts.sora(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white),
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.edit_outlined, size: 20, color: AppColors.textSecondary),
-            onPressed: _isLoading ? null : _openEdit,
-          ),
-          IconButton(
-            icon: const Icon(Icons.delete_outline_rounded, size: 20, color: AppColors.error),
-            onPressed: _isLoading ? null : _delete,
-          ),
-          const SizedBox(width: 4),
-        ],
+        // actions: [
+        //   IconButton(
+        //     icon: const Icon(Icons.edit_outlined, size: 20, color: Colors.white),
+        //     onPressed: _isLoading ? null : _openEdit,
+        //   ),
+        //   IconButton(
+        //     icon: const Icon(Icons.delete_outline_rounded, size: 20, color: Colors.white),
+        //     onPressed: _isLoading ? null : _delete,
+        //   ),
+        //   const SizedBox(width: 4),
+        // ],
       ),
       body: _isLoading
           ? Center(child: CircularProgressIndicator(strokeWidth: 2, color: accent))
@@ -2101,80 +2110,101 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
         onRefresh: _fetchDetail,
         color: accent,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+          padding: EdgeInsets.zero,
           children: [
-            _DetailHeaderCard(user: _user, accent: accent, isClient: _isClient),
-            const SizedBox(height: 16),
-            _DetailSection(
-              title: 'Contact Information',
-              icon: Icons.perm_contact_calendar_outlined,
-              accent: accent,
-              rows: [
-                _DetailRow(Icons.email_outlined, 'Email', _user.email),
-                if (_user.phone != null && _user.phone!.isNotEmpty)
-                  _DetailRow(Icons.phone_outlined, 'Phone', _user.phone!),
-                if (_user.address != null && _user.address!.isNotEmpty)
-                  _DetailRow(Icons.location_on_outlined, 'Address', _user.address!),
-              ],
+            _DetailHeaderBanner(user: _user, accent: accent, isClient: _isClient),
+            Transform.translate(
+              offset: const Offset(0, -20),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: _QuickContactCard(user: _user, accent: accent),
+              ),
             ),
-            if (_isClient) ...[
-              const SizedBox(height: 14),
-              _DetailSection(
-                title: 'Company Details',
-                icon: Icons.business_center_outlined,
-                accent: accent,
-                rows: [
-                  if (_user.companyName != null && _user.companyName!.isNotEmpty)
-                    _DetailRow(Icons.apartment_rounded, 'Company', _user.companyName!),
-                  if (_user.industry != null && _user.industry!.isNotEmpty)
-                    _DetailRow(Icons.category_outlined, 'Industry', _user.industry!),
-                  if (_user.displayBudget.isNotEmpty)
-                    _DetailRow(Icons.attach_money_rounded, 'Monthly Budget', _user.displayBudget),
-                  if (_user.projectTitle != null && _user.projectTitle!.isNotEmpty)
-                    _DetailRow(Icons.assignment_outlined, 'Project Title', _user.projectTitle!),
-                  if (_user.duration != null && _user.duration!.isNotEmpty)
-                    _DetailRow(Icons.calendar_month_outlined, 'Duration', _user.duration!),
-                  if (_user.gstNumber != null && _user.gstNumber!.isNotEmpty)
-                    _DetailRow(Icons.receipt_long_outlined, 'GST Number', _user.gstNumber!),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (_aboutText != null && _aboutText!.trim().isNotEmpty) ...[
+                    _AboutCard(text: _aboutText!.trim()),
+                    const SizedBox(height: 14),
+                  ],
+                  _DetailSection(
+                    title: 'Details',
+                    accent: accent,
+                    rows: [
+                      if (_user.address != null && _user.address!.isNotEmpty)
+                        _DetailRow(Icons.location_on_outlined, 'Address', _user.address!),
+                      if (_isClient) ...[
+                        if (_user.companyName != null && _user.companyName!.isNotEmpty)
+                          _DetailRow(Icons.apartment_rounded, 'Company', _user.companyName!),
+                        if (_user.industry != null && _user.industry!.isNotEmpty)
+                          _DetailRow(Icons.category_outlined, 'Industry', _user.industry!),
+                        if (_user.displayBudget.isNotEmpty)
+                          _DetailRow(Icons.attach_money_rounded, 'Monthly Budget', _user.displayBudget),
+                        if (_user.projectTitle != null && _user.projectTitle!.isNotEmpty)
+                          _DetailRow(Icons.assignment_outlined, 'Project Title', _user.projectTitle!),
+                        if (_user.duration != null && _user.duration!.isNotEmpty)
+                          _DetailRow(Icons.calendar_month_outlined, 'Duration', _user.duration!),
+                        if (_user.gstNumber != null && _user.gstNumber!.isNotEmpty)
+                          _DetailRow(Icons.receipt_long_outlined, 'GST Number', _user.gstNumber!),
+                      ] else ...[
+                        _DetailRow(Icons.work_outline_rounded, 'Role', _user.role),
+                        if (_user.specialization != null && _user.specialization!.isNotEmpty)
+                          _DetailRow(Icons.star_outline_rounded, 'Specialization', _user.specialization!),
+                      ],
+                      for (final e in _rawExtra.entries)
+                        if (e.value is! List && !_isTimestampKey(e.key))
+                          _DetailRow(_extraFieldIcon(e.key), _prettifyKey(e.key), _formatExtraValue(e.key, e.value)),
+                    ],
+                  ),
+                  for (final group in _chipGroups(accent)) ...[
+                    const SizedBox(height: 14),
+                    group,
+                  ],
                 ],
               ),
-            ] else ...[
-              const SizedBox(height: 14),
-              _DetailSection(
-                title: 'Professional Details',
-                icon: Icons.badge_outlined,
-                accent: accent,
-                rows: [
-                  _DetailRow(Icons.work_outline_rounded, 'Role', _user.role),
-                  if (_user.specialization != null && _user.specialization!.isNotEmpty)
-                    _DetailRow(Icons.star_outline_rounded, 'Specialization', _user.specialization!),
-                ],
-              ),
-            ],
-            if (_user.platform.isNotEmpty) ...[
-              const SizedBox(height: 14),
-              _PlatformsCard(platforms: _user.platform, accent: accent),
-            ],
-            if (_rawExtra.isNotEmpty) ...[
-              const SizedBox(height: 14),
-              _DetailSection(
-                title: 'Additional Info',
-                icon: Icons.info_outline_rounded,
-                accent: accent,
-                rows: _rawExtra.entries
-                    .map((e) => _DetailRow(Icons.circle, _prettifyKey(e.key), _formatExtraValue(e.key, e.value)))
-                    .toList(),
-              ),
-            ],
+            ),
           ],
         ).animate().fadeIn(duration: 250.ms),
       ),
     );
   }
 
+  /// Every list-type value — connected platforms, or any array field the API
+  /// sends (interests, tags, skills…) — gets its own pill/chip card, like the
+  /// reference screenshot's "Interests" block.
+  List<Widget> _chipGroups(Color accent) {
+    final groups = <Widget>[];
+    if (_user.platform.isNotEmpty) {
+      groups.add(_PlatformsCard(platforms: _user.platform, accent: accent));
+    }
+    for (final e in _rawExtra.entries) {
+      if (e.value is List) {
+        final items = (e.value as List).map((x) => x.toString()).toList();
+        if (items.isNotEmpty) {
+          groups.add(_ChipsCard(title: _prettifyKey(e.key), items: items, accent: accent));
+        }
+      }
+    }
+    return groups;
+  }
+
   String _prettifyKey(String key) {
     final spaced = key.replaceAllMapped(RegExp(r'([a-z0-9])([A-Z])'), (m) => '${m[1]} ${m[2]}');
     return spaced[0].toUpperCase() + spaced.substring(1);
+  }
+
+  IconData _extraFieldIcon(String key) {
+    final k = key.toLowerCase();
+    if (k.contains('status')) return Icons.verified_user_outlined;
+    if (k.contains('id')) return Icons.tag_rounded;
+    return Icons.info_outline_rounded;
+  }
+
+  bool _isTimestampKey(String key) {
+    final k = key.toLowerCase();
+    return k == 'createdat' || k == 'updatedat' || k.contains('created') || k.contains('updated');
   }
 
   /// True for values that carry no real information: null, empty/whitespace
@@ -2219,108 +2249,120 @@ void _copyToClipboard(BuildContext context, String label, String value) {
   ));
 }
 
-// ─── Header card: avatar, name, role + status, quick-contact & record id ───
-class _DetailHeaderCard extends StatelessWidget {
+// ─── Full-bleed banner header: avatar, name, role/location ─────────────────
+class _DetailHeaderBanner extends StatelessWidget {
   final AdminUserModel user;
   final Color accent;
   final bool isClient;
-  const _DetailHeaderCard({required this.user, required this.accent, required this.isClient});
+  const _DetailHeaderBanner({required this.user, required this.accent, required this.isClient});
+
+  @override
+  Widget build(BuildContext context) {
+    final subtitleParts = isClient
+        ? [user.companyName, user.industry].where((s) => s != null && s.trim().isNotEmpty).cast<String>().toList()
+        : [user.role, user.specialization].where((s) => s != null && s.trim().isNotEmpty).cast<String>().toList();
+    final subtitle = subtitleParts.isNotEmpty ? subtitleParts.join(' · ') : (isClient ? 'Client' : 'Team member');
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(24, 28, 24, 40),
+      decoration: BoxDecoration(
+        color: accent,
+        borderRadius: const BorderRadius.only(
+          bottomLeft: Radius.circular(28),
+          bottomRight: Radius.circular(28),
+        ),
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 72, height: 72,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white.withOpacity(0.16),
+              border: Border.all(color: Colors.white.withOpacity(0.35), width: 1.5),
+            ),
+            child: Center(
+              child: Text(
+                user.initial,
+                style: GoogleFonts.sora(fontSize: 26, fontWeight: FontWeight.w700, color: Colors.white),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            user.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.sora(fontSize: 19, fontWeight: FontWeight.w700, color: Colors.white),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.sora(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.white.withOpacity(0.82)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Overlapping card: quick-contact chips + record id (sits over the
+// banner's bottom edge, mirroring the reference screenshot's "Profile
+// strength" card position) ───────────────────────────────────────────────
+class _QuickContactCard extends StatelessWidget {
+  final AdminUserModel user;
+  final Color accent;
+  const _QuickContactCard({required this.user, required this.accent});
 
   @override
   Widget build(BuildContext context) {
     final hasEmail = user.email.isNotEmpty;
     final hasPhone = user.phone != null && user.phone!.isNotEmpty;
 
-    return Container(
+    return SizedBox(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft, end: Alignment.bottomRight,
-          colors: [accent.withOpacity(0.16), accent.withOpacity(0.03)],
+      child: CommonCard(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (hasEmail)
+              SizedBox(width: double.infinity, child: _QuickContactChip(icon: Icons.mail_outline_rounded, value: user.email, accent: accent)),
+            if (hasEmail && hasPhone) const SizedBox(height: 10),
+            if (hasPhone)
+              SizedBox(width: double.infinity, child: _QuickContactChip(icon: Icons.call_outlined, value: user.phone!, accent: accent)),
+          ],
         ),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: accent.withOpacity(0.22)),
-        boxShadow: [
-          BoxShadow(color: accent.withOpacity(0.08), blurRadius: 24, offset: const Offset(0, 10)),
-        ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 64, height: 64,
-                padding: const EdgeInsets.all(2.5),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: SweepGradient(colors: [accent, accent.withOpacity(0.25), accent]),
-                ),
-                child: Container(
-                  decoration: BoxDecoration(color: AppColors.background, shape: BoxShape.circle),
-                  child: Center(
-                    child: Text(user.initial, style: GoogleFonts.sora(fontSize: 22, fontWeight: FontWeight.w700, color: accent)),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      user.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.sora(fontSize: 19, fontWeight: FontWeight.w700, color: AppColors.textPrimary, height: 1.15),
-                    ),
-                    const SizedBox(height: 7),
-                    Wrap(
-                      spacing: 6, runSpacing: 6,
-                      children: [
-                        _Tag(isClient ? 'Client' : user.role, accent),
-                        _StatusBadge(user.status ?? 'Active'),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          if (hasEmail || hasPhone) ...[
-            const SizedBox(height: 18),
-            Container(height: 1, color: accent.withOpacity(0.12)),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                if (hasEmail)
-                  Expanded(child: _QuickContactChip(icon: Icons.mail_outline_rounded, value: user.email, accent: accent)),
-                if (hasEmail && hasPhone) const SizedBox(width: 10),
-                if (hasPhone)
-                  Expanded(child: _QuickContactChip(icon: Icons.call_outlined, value: user.phone!, accent: accent)),
-              ],
+    );
+  }
+}
+
+// ─── Plain paragraph card, e.g. "About me" / notes ──────────────────────────
+class _AboutCard extends StatelessWidget {
+  final String text;
+  const _AboutCard({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: CommonCard(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('About', style: GoogleFonts.sora(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+            const SizedBox(height: 10),
+            Text(
+              text,
+              style: GoogleFonts.sora(fontSize: 13.5, color: AppColors.textSecondary, height: 1.5, fontWeight: FontWeight.w400),
             ),
           ],
-          const SizedBox(height: 14),
-          GestureDetector(
-            onTap: () => _copyToClipboard(context, 'Record ID', user.id),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.tag_rounded, size: 12, color: AppColors.textMuted),
-                const SizedBox(width: 4),
-                Text(
-                  user.id.length > 10 ? '${user.id.substring(0, 6)}…${user.id.substring(user.id.length - 4)}' : user.id,
-                  style: GoogleFonts.robotoMono(fontSize: 10.5, color: AppColors.textMuted, fontWeight: FontWeight.w500, letterSpacing: 0.2),
-                ),
-                const SizedBox(width: 5),
-                Icon(Icons.copy_rounded, size: 11, color: AppColors.textMuted),
-              ],
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -2364,44 +2406,73 @@ class _QuickContactChip extends StatelessWidget {
   }
 }
 
-// ─── Generic labeled section card ───────────────────────────────────────────
+// ─── Generic labeled section card: plain bold title, then label/value rows ─
 class _DetailSection extends StatelessWidget {
   final String title;
-  final IconData icon;
   final Color accent;
   final List<_DetailRow> rows;
-  const _DetailSection({required this.title, required this.icon, required this.accent, required this.rows});
+  const _DetailSection({required this.title, required this.accent, required this.rows});
 
   @override
   Widget build(BuildContext context) {
     if (rows.isEmpty) return const SizedBox.shrink();
-    return CommonCard(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 28, height: 28,
-                decoration: BoxDecoration(color: accent.withOpacity(0.12), borderRadius: BorderRadius.circular(8)),
-                child: Icon(icon, size: 14, color: accent),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                title.toUpperCase(),
-                style: GoogleFonts.sora(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.textSecondary, letterSpacing: 0.6),
-              ),
+    return SizedBox(
+      width: double.infinity,
+      child: CommonCard(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: GoogleFonts.sora(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+            const SizedBox(height: 12),
+            Container(height: 1, color: AppColors.border.withOpacity(0.6)),
+            for (int i = 0; i < rows.length; i++) ...[
+              _DetailRowTile(row: rows[i], accent: accent),
+              if (i != rows.length - 1) Container(height: 1, color: AppColors.border.withOpacity(0.35)),
             ],
-          ),
-          const SizedBox(height: 14),
-          Container(height: 1, color: AppColors.border.withOpacity(0.6)),
-          for (int i = 0; i < rows.length; i++) ...[
-            _DetailRowTile(row: rows[i]),
-            if (i != rows.length - 1) Container(height: 1, color: AppColors.border.withOpacity(0.35)),
+            const SizedBox(height: 6),
           ],
-          const SizedBox(height: 6),
-        ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Chip/pill card for list-type data (interests, tags, connected platforms)
+class _ChipsCard extends StatelessWidget {
+  final String title;
+  final List<String> items;
+  final Color accent;
+  const _ChipsCard({required this.title, required this.items, required this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    if (items.isEmpty) return const SizedBox.shrink();
+    return SizedBox(
+      width: double.infinity,
+      child: CommonCard(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: GoogleFonts.sora(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8, runSpacing: 8,
+              children: items.map((t) {
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: accent.withOpacity(0.10),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: accent.withOpacity(0.25)),
+                  ),
+                  child: Text(t, style: GoogleFonts.sora(fontSize: 12.5, fontWeight: FontWeight.w600, color: accent)),
+                );
+              }).toList(),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2409,34 +2480,83 @@ class _DetailSection extends StatelessWidget {
 
 class _DetailRowTile extends StatelessWidget {
   final _DetailRow row;
-  const _DetailRowTile({required this.row});
+  final Color accent;
+  const _DetailRowTile({required this.row, required this.accent});
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: () => _copyToClipboard(context, row.label, row.value),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        child: Row(
+    // Tag/chip rows (e.g. interests, specializations, platforms saved as a
+    // list) get their own layout: label on top, pills wrapped below.
+    if (row.tags != null) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 13),
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 30, height: 30,
-              decoration: BoxDecoration(color: AppColors.textMuted.withOpacity(0.08), borderRadius: BorderRadius.circular(9)),
-              child: Icon(row.icon, size: 14, color: AppColors.textMuted),
+            Row(
+              children: [
+                Icon(row.icon, size: 16, color: AppColors.textMuted),
+                const SizedBox(width: 10),
+                Text(
+                  row.label,
+                  style: GoogleFonts.sora(fontSize: 13, color: AppColors.textMuted, fontWeight: FontWeight.w600),
+                ),
+              ],
             ),
-            const SizedBox(width: 12),
+            if (row.tags!.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: row.tags!.map((t) {
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: accent.withOpacity(0.10),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: accent.withOpacity(0.25)),
+                    ),
+                    child: Text(
+                      t,
+                      style: GoogleFonts.sora(fontSize: 12, fontWeight: FontWeight.w600, color: accent),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ] else
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text('—', style: GoogleFonts.sora(fontSize: 13, color: AppColors.textMuted)),
+              ),
+          ],
+        ),
+      );
+    }
+
+    // Standard row: icon + label on the left, value right-aligned on the
+    // same line — mirrors the reference "Details" list layout.
+    return InkWell(
+      onTap: () => _copyToClipboard(context, row.label, row.value ?? ''),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 13),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Icon(row.icon, size: 16, color: AppColors.textMuted),
+            const SizedBox(width: 10),
+            Text(
+              row.label,
+              style: GoogleFonts.sora(fontSize: 13, color: AppColors.textMuted, fontWeight: FontWeight.w600),
+            ),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(row.label, style: GoogleFonts.sora(fontSize: 10.5, color: AppColors.textMuted, fontWeight: FontWeight.w600, letterSpacing: 0.2)),
-                  const SizedBox(height: 3),
-                  Text(row.value, style: GoogleFonts.sora(fontSize: 13.5, color: AppColors.textPrimary, fontWeight: FontWeight.w500, height: 1.3)),
-                ],
+              child: Text(
+                row.value ?? '',
+                textAlign: TextAlign.right,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.sora(fontSize: 13.5, color: AppColors.textPrimary, fontWeight: FontWeight.w700, height: 1.3),
               ),
             ),
-            Icon(Icons.copy_rounded, size: 13, color: AppColors.textMuted.withOpacity(0.5)),
           ],
         ),
       ),
@@ -2447,8 +2567,10 @@ class _DetailRowTile extends StatelessWidget {
 class _DetailRow {
   final IconData icon;
   final String label;
-  final String value;
-  const _DetailRow(this.icon, this.label, this.value);
+  final String? value;
+  final List<String>? tags;
+  const _DetailRow(this.icon, this.label, [this.value]) : tags = null;
+  const _DetailRow.tags(this.icon, this.label, this.tags) : value = null;
 }
 
 // ─── Connected platforms chip row ───────────────────────────────────────────
@@ -2469,49 +2591,39 @@ class _PlatformsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return CommonCard(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 28, height: 28,
-                decoration: BoxDecoration(color: accent.withOpacity(0.12), borderRadius: BorderRadius.circular(8)),
-                child: Icon(Icons.link_rounded, size: 14, color: accent),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                'CONNECTED PLATFORMS',
-                style: GoogleFonts.sora(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.textSecondary, letterSpacing: 0.6),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 8, runSpacing: 8,
-            children: platforms.map((p) {
-              final meta = _meta[p] ?? _PlatMeta(p, Icons.public_rounded, AppColors.textMuted);
-              return Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-                decoration: BoxDecoration(
-                  color: meta.color.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(11),
-                  border: Border.all(color: meta.color.withOpacity(0.28)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(meta.icon, size: 15, color: meta.color),
-                    const SizedBox(width: 6),
-                    Text(meta.label, style: GoogleFonts.sora(fontSize: 12, fontWeight: FontWeight.w600, color: meta.color)),
-                  ],
-                ),
-              );
-            }).toList(),
-          ),
-        ],
+    return SizedBox(
+      width: double.infinity,
+      child: CommonCard(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Connected Platforms', style: GoogleFonts.sora(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8, runSpacing: 8,
+              children: platforms.map((p) {
+                final meta = _meta[p] ?? _PlatMeta(p, Icons.public_rounded, AppColors.textMuted);
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                  decoration: BoxDecoration(
+                    color: meta.color.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(11),
+                    border: Border.all(color: meta.color.withOpacity(0.28)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(meta.icon, size: 15, color: meta.color),
+                      const SizedBox(width: 6),
+                      Text(meta.label, style: GoogleFonts.sora(fontSize: 12, fontWeight: FontWeight.w600, color: meta.color)),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
+        ),
       ),
     );
   }

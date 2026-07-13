@@ -61,6 +61,24 @@ class SocialPlatformModel {
     'threads': _PlatformMeta('Threads', Color(0xFF000000), Icons.tag),
   };
 
+  /// Builds a platform entry from a plain platform-name string, e.g. when
+  /// the API returns `platforms: ["YouTube", "Instagram", "Facebook"]`
+  /// instead of a list of connection objects. There's no connection info
+  /// in a bare string, so this defaults to `connected: false`.
+  factory SocialPlatformModel.fromPlatformName(String name) {
+    final key = name.toLowerCase();
+    final meta = _meta[key] ?? _PlatformMeta(key.isEmpty ? 'Unknown' : name, const Color(0xFF607D8B), Icons.public);
+
+    return SocialPlatformModel(
+      platform: key,
+      name: meta.label,
+      icon: meta.icon,
+      color: meta.color,
+      connected: false,
+      statusMessage: 'Not connected',
+    );
+  }
+
   factory SocialPlatformModel.fromConnectedAccountJson(Map<String, dynamic> json) {
     final key = (json['platform'] ?? json['network'] ?? '').toString().toLowerCase();
     final meta = _meta[key] ?? _PlatformMeta(key.isEmpty ? 'Unknown' : key, const Color(0xFF607D8B), Icons.public);
