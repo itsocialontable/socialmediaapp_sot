@@ -6,7 +6,7 @@ import '../../../../core/providers/social_provider.dart';
 import '../../../../core/services/social_service.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../model/social_platform_model.dart';
-import '../../../../shared/widgets/social_platform_card.dart';
+import '../../../../shared/widgets/common_widgets.dart';
 import 'channels/oauth_webview_screen.dart';
 
 // ─────────────────────────────────────────
@@ -258,7 +258,8 @@ class _ConnectedAccountsPageState extends State<ConnectedAccountsPage> {
 }
 
 // ─────────────────────────────────────────
-// A single client block: name + its platform list.
+// A single client block: header + connected-accounts list + platform
+// chips to connect more — mirrors the "card per client" reference layout.
 // ─────────────────────────────────────────
 class _ClientSection extends StatelessWidget {
   final SmmClientModel client;
@@ -273,51 +274,268 @@ class _ClientSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final connectedCount = client.platforms.where((p) => p.connected).length;
+    final connected = client.platforms.where((p) => p.connected).toList();
+    final connectedCount = connected.length;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 22),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              CircleAvatar(
-                radius: 16,
-                backgroundColor: AppColors.smmColor.withOpacity(0.12),
-                child: Text(
-                  client.name.isNotEmpty ? client.name[0].toUpperCase() : '?',
-                  style: GoogleFonts.sora(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.smmColor),
+      padding: const EdgeInsets.only(bottom: 16),
+      child: CommonCard(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Header: avatar, name/email, status badge ──
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                CircleAvatar(
+                  radius: 20,
+                  backgroundColor: AppColors.smmColor.withOpacity(0.15),
+                  child: Text(
+                    client.name.isNotEmpty ? client.name[0].toUpperCase() : '?',
+                    style: GoogleFonts.sora(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.smmColor),
+                  ),
                 ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        client.name,
+                        style: GoogleFonts.sora(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                      ),
+                      if (client.email != null && client.email!.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          client.email!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.sora(fontSize: 12, color: AppColors.textSecondary),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                _StatusBadge(connectedCount: connectedCount),
+              ],
+            ),
+
+            // ── Connected accounts list ──
+            if (connectedCount > 0) ...[
+              const SizedBox(height: 16),
+              Text(
+                'CONNECTED ACCOUNTS',
+                style: GoogleFonts.sora(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textMuted, letterSpacing: 0.6),
               ),
-              const SizedBox(width: 10),
-              Expanded(
+              const SizedBox(height: 10),
+              Container(
+                decoration: BoxDecoration(
+                  color: AppColors.background.withOpacity(0.4),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.border),
+                ),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      client.name,
-                      style: GoogleFonts.sora(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                    ),
-                    Text(
-                      '$connectedCount of ${client.platforms.length} connected',
-                      style: GoogleFonts.sora(fontSize: 11, color: AppColors.textSecondary),
-                    ),
+                    for (int i = 0; i < connected.length; i++) ...[
+                      _ConnectedAccountRow(
+                        platform: connected[i],
+                        loading: isPlatformLoading(connected[i].platform),
+                        onDisconnect: () => onTapPlatform(connected[i]),
+                      ),
+                      if (i != connected.length - 1)
+                        Container(height: 1, color: AppColors.border.withOpacity(0.5), margin: const EdgeInsets.symmetric(horizontal: 14)),
+                    ],
                   ],
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 10),
-          ...client.platforms.map((platform) => Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: SocialPlatformCard(
-              platform: platform,
-              loading: isPlatformLoading(platform.platform),
-              onActionPressed: () => onTapPlatform(platform),
+
+            // ── Connect-platform chips (all platforms; connected ones
+            // shown checked-off and disabled) ──
+            const SizedBox(height: 16),
+            Text(
+              'CONNECT PLATFORM',
+              style: GoogleFonts.sora(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textMuted, letterSpacing: 0.6),
             ),
-          )),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: client.platforms.map((platform) {
+                return _PlatformChip(
+                  platform: platform,
+                  loading: isPlatformLoading(platform.platform),
+                  onTap: platform.connected ? null : () => onTapPlatform(platform),
+                );
+              }).toList(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────
+// Top-right status badge: "No channels" (muted) or "N connected" (green).
+// ─────────────────────────────────────────
+class _StatusBadge extends StatelessWidget {
+  final int connectedCount;
+  const _StatusBadge({required this.connectedCount});
+
+  @override
+  Widget build(BuildContext context) {
+    final bool hasAny = connectedCount > 0;
+    final color = hasAny ? AppColors.success : AppColors.textMuted;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        hasAny ? '$connectedCount connected' : 'No channels',
+        style: GoogleFonts.sora(fontSize: 11, fontWeight: FontWeight.w600, color: color),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────
+// Row for an already-connected platform: icon, name/handle, connected
+// check, and a tappable "Disconnect" action (or a spinner while busy).
+// ─────────────────────────────────────────
+class _ConnectedAccountRow extends StatelessWidget {
+  final SocialPlatformModel platform;
+  final bool loading;
+  final VoidCallback onDisconnect;
+
+  const _ConnectedAccountRow({
+    required this.platform,
+    required this.loading,
+    required this.onDisconnect,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(color: platform.color.withOpacity(0.15), shape: BoxShape.circle),
+            child: Icon(platform.icon, size: 17, color: platform.color),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  platform.name,
+                  style: GoogleFonts.sora(fontSize: 13.5, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                ),
+                if (platform.connectedAs != null && platform.connectedAs!.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    '@${platform.connectedAs}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.sora(fontSize: 11.5, color: AppColors.textSecondary),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          if (loading)
+            const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(AppColors.error)),
+            )
+          else
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.check_circle_rounded, size: 14, color: AppColors.success),
+                const SizedBox(width: 4),
+                Text('Connected', style: GoogleFonts.sora(fontSize: 11.5, fontWeight: FontWeight.w600, color: AppColors.success)),
+                const SizedBox(width: 12),
+                GestureDetector(
+                  onTap: onDisconnect,
+                  child: Text(
+                    'Disconnect',
+                    style: GoogleFonts.sora(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.error),
+                  ),
+                ),
+              ],
+            ),
         ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────
+// Small pill chip in the "Connect Platform" row. Unconnected platforms
+// are tappable and open the OAuth flow; connected ones render checked-off
+// and disabled, since they're already listed above.
+// ─────────────────────────────────────────
+class _PlatformChip extends StatelessWidget {
+  final SocialPlatformModel platform;
+  final bool loading;
+  final VoidCallback? onTap;
+
+  const _PlatformChip({
+    required this.platform,
+    required this.loading,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isDone = platform.connected;
+
+    return Opacity(
+      opacity: isDone ? 0.5 : 1,
+      child: GestureDetector(
+        onTap: loading ? null : onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          decoration: BoxDecoration(
+            color: isDone ? AppColors.surfaceLight : platform.color.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: isDone ? AppColors.border : platform.color.withOpacity(0.3)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (loading)
+                SizedBox(
+                  width: 13,
+                  height: 13,
+                  child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(platform.color)),
+                )
+              else
+                Icon(isDone ? Icons.check_rounded : platform.icon, size: 15, color: isDone ? AppColors.textMuted : platform.color),
+              const SizedBox(width: 6),
+              Text(
+                platform.name,
+                style: GoogleFonts.sora(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: isDone ? AppColors.textMuted : platform.color,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

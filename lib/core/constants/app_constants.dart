@@ -3,7 +3,7 @@
 class AppConstants {
   // Base URL
   static const String baseUrl =
-      'https://whacking-dispute-agility.ngrok-free.dev';
+      'https://smm-backend1-stkn.onrender.com';
 
   // ── Admin ──────────────────────────────────────────────────────────────
   static const String adminDashboard = '/api/admin/dashboard';
@@ -54,7 +54,7 @@ class AppConstants {
   static const String socialConnect = "/api/social/connect";
   static const String socialDisconnect = "/api/social/disconnect";
   static const String redirectUri =
-      "https://whacking-dispute-agility.ngrok-free.dev/auth/callback";
+      "https://smm-backend1-stkn.onrender.com/auth/callback";
   static const String publishedPosts = '/api/posts/published';
 
   // ── Secure Storage Keys ────────────────────────────────────────────────
