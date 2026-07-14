@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/network/api_service.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../../../../core/errors/app_exceptions.dart';
 
 // ─────────────────────────────────────────
@@ -45,14 +46,12 @@ class _EditDraftSheetState extends State<EditDraftSheet> {
 
   bool get _isBusy => _isUpdating || _isPublishing;
 
-  // ── Platform list ────────────────────────
-  static const _platforms = [
-    _PlatformOption('instagram', 'Instagram', Color(0xFFE1306C), Icons.camera_alt_rounded),
-    _PlatformOption('facebook',  'Facebook',  Color(0xFF1877F2), Icons.facebook_rounded),
-    _PlatformOption('twitter',   'Twitter/X', Color(0xFF1DA1F2), Icons.alternate_email_rounded),
-    _PlatformOption('linkedin',  'LinkedIn',  Color(0xFF0A66C2), Icons.work_rounded),
-    _PlatformOption('pinterest', 'Pinterest', Color(0xFFE60023), Icons.push_pin_rounded),
-  ];
+  // ── Connected devices for this draft's client (fetched from
+  //    /api/social/accounts?clientId=), same as Create Post page ──
+  List<_PlatformOption> _platforms = [];
+  bool _accountsLoading = false;
+  String? _accountsError;
+  String? _clientId;
 
   // ────────────────────────────────────────
   @override
@@ -82,6 +81,45 @@ class _EditDraftSheetState extends State<EditDraftSheet> {
         _scheduledDateTime = DateFormat('yyyy-MM-dd HH:mm').parse('$d $t');
       }
     } catch (_) {}
+
+    _clientId = _extractClientId(widget.draft);
+    if (_clientId != null && _clientId!.isNotEmpty) {
+      _fetchConnectedAccounts(_clientId!);
+    }
+  }
+
+  // Draft objects have shown up with the client id under a few different
+  // keys/shapes depending on the endpoint, so check them all.
+  String? _extractClientId(Map<String, dynamic> draft) {
+    final direct = draft['clientId'] ?? draft['client_id'];
+    if (direct != null) return direct.toString();
+    final client = draft['client'];
+    if (client is Map) {
+      final id = client['id'] ?? client['_id'];
+      if (id != null) return id.toString();
+    } else if (client is String && client.isNotEmpty) {
+      return client;
+    }
+    return null;
+  }
+
+  Future<void> _fetchConnectedAccounts(String clientId) async {
+    setState(() { _accountsLoading = true; _accountsError = null; });
+    try {
+      final res = await _api.get(AppConstants.socialAccount, queryParams: {'clientId': clientId});
+      final data = res['data'];
+      final raw = (data is List ? data : null) ?? (data is Map ? data['accounts'] : null) ?? res['accounts'] ?? res['data'] ?? res;
+      final list = raw is List ? raw.cast<Map<String, dynamic>>() : <Map<String, dynamic>>[];
+      setState(() { _platforms = list.map(_platformOptionFromJson).toList(); _accountsLoading = false; });
+    } on NetworkException catch (_) {
+      setState(() { _accountsError = 'No internet connection'; _accountsLoading = false; });
+    } on UnauthorizedException catch (_) {
+      setState(() { _accountsError = 'Session expired'; _accountsLoading = false; });
+    } on AppException catch (e) {
+      setState(() { _accountsError = e.message; _accountsLoading = false; });
+    } catch (_) {
+      setState(() { _accountsError = 'Failed to load connected accounts'; _accountsLoading = false; });
+    }
   }
 
   @override
@@ -340,48 +378,7 @@ class _EditDraftSheetState extends State<EditDraftSheet> {
           // ── Platforms ────────────────────────────────────────────────
           _label('Platforms'),
           const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _platforms.map((p) {
-              final sel = _selectedPlatforms.contains(p.id);
-              return GestureDetector(
-                onTap: () => setState(() =>
-                sel ? _selectedPlatforms.remove(p.id)
-                    : _selectedPlatforms.add(p.id)),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: sel
-                        ? p.color.withOpacity(0.15)
-                        : AppColors.surfaceLight,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                        color: sel ? p.color : AppColors.border,
-                        width: sel ? 1.5 : 1),
-                  ),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(p.icon,
-                        color: sel ? p.color : AppColors.textMuted,
-                        size: 14),
-                    const SizedBox(width: 6),
-                    Text(p.name,
-                        style: GoogleFonts.sora(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: sel ? p.color : AppColors.textSecondary)),
-                    if (sel) ...[
-                      const SizedBox(width: 5),
-                      Icon(Icons.check_circle_rounded,
-                          color: p.color, size: 12),
-                    ],
-                  ]),
-                ),
-              );
-            }).toList(),
-          ),
+          _buildConnectedDevices(),
           const SizedBox(height: 20),
 
           // ── Media ────────────────────────────────────────────────────
@@ -679,6 +676,122 @@ class _EditDraftSheetState extends State<EditDraftSheet> {
           fontSize: 12,
           fontWeight: FontWeight.w600,
           color: AppColors.textSecondary));
+
+  Widget _buildConnectedDevices() {
+    if (_clientId == null || _clientId!.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(color: AppColors.surfaceLight, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
+        child: Row(children: [
+          const Icon(Icons.info_outline_rounded, size: 16, color: AppColors.textMuted),
+          const SizedBox(width: 8),
+          Expanded(child: Text('No client linked to this draft', style: GoogleFonts.sora(fontSize: 12, color: AppColors.textMuted))),
+        ]),
+      );
+    }
+    if (_accountsLoading) {
+      return Container(
+        height: 48,
+        decoration: BoxDecoration(color: AppColors.surfaceLight, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
+        child: Row(children: [
+          const SizedBox(width: 14),
+          const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF6C63FF))),
+          const SizedBox(width: 10),
+          Text('Loading connected devices...', style: GoogleFonts.sora(fontSize: 13, color: AppColors.textMuted)),
+        ]),
+      );
+    }
+    if (_accountsError != null) {
+      return Container(
+        height: 48,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: BoxDecoration(color: AppColors.error.withOpacity(0.06), borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.error.withOpacity(0.3))),
+        child: Row(children: [
+          const Icon(Icons.error_outline_rounded, size: 16, color: AppColors.error),
+          const SizedBox(width: 8),
+          Expanded(child: Text(_accountsError!, style: GoogleFonts.sora(fontSize: 12, color: AppColors.error), maxLines: 1, overflow: TextOverflow.ellipsis)),
+          GestureDetector(
+            onTap: () => _fetchConnectedAccounts(_clientId!),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(color: AppColors.error.withOpacity(0.12), borderRadius: BorderRadius.circular(8)),
+              child: Text('Retry', style: GoogleFonts.sora(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.error)),
+            ),
+          ),
+        ]),
+      );
+    }
+    if (_platforms.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.warning.withOpacity(0.06),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.warning.withOpacity(0.3)),
+        ),
+        child: Row(children: [
+          const Icon(Icons.link_off_rounded, size: 16, color: AppColors.warning),
+          const SizedBox(width: 8),
+          Expanded(child: Text('No connected device for this client', style: GoogleFonts.sora(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.warning))),
+        ]),
+      );
+    }
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: _platforms.map((p) {
+        final sel = _selectedPlatforms.contains(p.id);
+        return GestureDetector(
+          onTap: () => setState(() =>
+          sel ? _selectedPlatforms.remove(p.id)
+              : _selectedPlatforms.add(p.id)),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            padding: const EdgeInsets.symmetric(
+                horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: sel
+                  ? p.color.withOpacity(0.15)
+                  : AppColors.surfaceLight,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                  color: sel ? p.color : AppColors.border,
+                  width: sel ? 1.5 : 1),
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(p.icon,
+                  color: sel ? p.color : AppColors.textMuted,
+                  size: 14),
+              const SizedBox(width: 6),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(p.name,
+                      style: GoogleFonts.sora(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: sel ? p.color : AppColors.textSecondary)),
+                  if (p.connectedAs != null)
+                    Text(p.connectedAs!,
+                        style: GoogleFonts.sora(
+                            fontSize: 9,
+                            color: sel ? p.color.withOpacity(0.8) : AppColors.textMuted)),
+                ],
+              ),
+              if (sel) ...[
+                const SizedBox(width: 5),
+                Icon(Icons.check_circle_rounded,
+                    color: p.color, size: 12),
+              ],
+            ]),
+          ),
+        );
+      }).toList(),
+    );
+  }
 }
 
 // ─────────────────────────────────────────
@@ -688,5 +801,30 @@ class _PlatformOption {
   final String id, name;
   final Color color;
   final IconData icon;
-  const _PlatformOption(this.id, this.name, this.color, this.icon);
+  final String? connectedAs;
+  const _PlatformOption(this.id, this.name, this.color, this.icon, {this.connectedAs});
+}
+
+class _PlatformMeta {
+  final String label;
+  final Color color;
+  final IconData icon;
+  const _PlatformMeta(this.label, this.color, this.icon);
+}
+
+const Map<String, _PlatformMeta> _kPlatformMeta = {
+  'instagram': _PlatformMeta('Instagram', Color(0xFFE1306C), Icons.camera_alt_rounded),
+  'facebook': _PlatformMeta('Facebook', Color(0xFF1877F2), Icons.facebook_rounded),
+  'twitter': _PlatformMeta('Twitter / X', Color(0xFF1DA1F2), Icons.alternate_email_rounded),
+  'linkedin': _PlatformMeta('LinkedIn', Color(0xFF0A66C2), Icons.work_rounded),
+  'pinterest': _PlatformMeta('Pinterest', Color(0xFFE60023), Icons.push_pin_rounded),
+  'youtube': _PlatformMeta('YouTube', Color(0xFFFF0000), Icons.play_circle_fill_rounded),
+  'threads': _PlatformMeta('Threads', Color(0xFF000000), Icons.tag_rounded),
+};
+
+_PlatformOption _platformOptionFromJson(Map<String, dynamic> json) {
+  final key = (json['platform'] ?? json['network'] ?? '').toString().toLowerCase();
+  final meta = _kPlatformMeta[key] ?? _PlatformMeta(key.isEmpty ? 'Unknown' : key, AppColors.textMuted, Icons.public_rounded);
+  final connectedAs = json['username']?.toString() ?? json['name']?.toString() ?? json['displayName']?.toString();
+  return _PlatformOption(key, meta.label, meta.color, meta.icon, connectedAs: connectedAs);
 }

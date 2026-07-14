@@ -8,14 +8,21 @@ import 'core/providers/client_design_project_provider.dart';
 import 'core/providers/gd_project_provider.dart';
 import 'core/providers/social_provider.dart';
 import 'core/router/app_router.dart';
+import 'core/services/oauth_deep_link_service.dart';
 import 'core/services/update_service.dart';
 import 'core/theme/app_theme.dart';
 import 'features/dashboard/smm/smm_dashboard_screen.dart';
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
+final GlobalKey<ScaffoldMessengerState> rootScaffoldMessengerKey =
+GlobalKey<ScaffoldMessengerState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Listens for the smmapp://oauth-callback deep link that the browser
+  // sends back after a Google (or other platform) OAuth sign-in.
+  OAuthDeepLinkService.instance.init();
 
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
@@ -31,6 +38,24 @@ void main() async {
   ]);
 
   runApp(const MyApp());
+
+  // Handles the case where Android killed the app process while the user
+  // was signing in with Google/etc. (common on the FIRST connect attempt,
+  // since the consent screen has extra steps). The deep link then cold-
+  // starts the app instead of resuming it, so the in-memory OAuth state
+  // from before is gone. OAuthDeepLinkService persisted the callback to
+  // disk in that case — pick it up here and finish the connect.
+  WidgetsBinding.instance.addPostFrameCallback((_) async {
+    final ctx = rootNavigatorKey.currentContext;
+    if (ctx == null) return;
+    final social = Provider.of<SocialProvider>(ctx, listen: false);
+    final resumed = await social.resumePendingConnectIfAny();
+    if (resumed) {
+      rootScaffoldMessengerKey.currentState?.showSnackBar(
+        const SnackBar(content: Text('Account connected successfully.')),
+      );
+    }
+  });
 
   // App render hone ke baad update check — Navigator ready hoga tab tak
   WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -66,6 +91,7 @@ class MyApp extends StatelessWidget {
           final router = AppRouter.createRouter(context);
           return MaterialApp.router(
             title: 'GrowthCraft SMM',
+            scaffoldMessengerKey: rootScaffoldMessengerKey,
             debugShowCheckedModeBanner: false,
             theme: AppTheme.darkTheme,
             routerConfig: router,

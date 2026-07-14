@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/network/api_service.dart';
@@ -663,19 +664,26 @@ class _SmmHomeState extends State<_SmmHome> {
   bool _loading = true;
   String? _error;
 
-  static const _schedule = [
-    ('Instagram Post', 'Fashion Brand', '10:00 AM',
-    Icons.camera_alt_rounded, Color(0xFFE1306C)),
-    ('Facebook Post', 'Tech Company', '01:30 PM',
-    Icons.facebook_rounded, Color(0xFF1877F2)),
-    ('LinkedIn Post', 'Business Tips', '04:00 PM',
-    Icons.work_rounded, Color(0xFF0A66C2)),
-  ];
+  // ── Today's Schedule (from /api/posts/queued, filtered to today) ──
+  List<Map<String, dynamic>> _todaySchedule = [];
+  bool _scheduleLoading = true;
+  String? _scheduleError;
+
+  static const Map<String, ({String label, IconData icon, Color color})> _schedulePlatformMeta = {
+    'instagram': (label: 'Instagram Post', icon: Icons.camera_alt_rounded, color: Color(0xFFE1306C)),
+    'facebook': (label: 'Facebook Post', icon: Icons.facebook_rounded, color: Color(0xFF1877F2)),
+    'twitter': (label: 'Twitter / X Post', icon: Icons.alternate_email_rounded, color: Color(0xFF1DA1F2)),
+    'linkedin': (label: 'LinkedIn Post', icon: Icons.work_rounded, color: Color(0xFF0A66C2)),
+    'pinterest': (label: 'Pinterest Post', icon: Icons.push_pin_rounded, color: Color(0xFFE60023)),
+    'youtube': (label: 'YouTube Post', icon: Icons.play_circle_fill_rounded, color: Color(0xFFFF0000)),
+    'threads': (label: 'Threads Post', icon: Icons.tag_rounded, color: Color(0xFF000000)),
+  };
 
   @override
   void initState() {
     super.initState();
     _fetchDashboard();
+    _fetchTodaySchedule();
   }
 
   Future<void> _fetchDashboard() async {
@@ -697,6 +705,59 @@ class _SmmHomeState extends State<_SmmHome> {
     }
   }
 
+  // Queued posts come from /api/posts/queued (same endpoint used in the
+  // Posts tab's Queue list) — here we just filter down to today's date so
+  // the dashboard shows what's actually scheduled for today.
+  Future<void> _fetchTodaySchedule() async {
+    setState(() { _scheduleLoading = true; _scheduleError = null; });
+    try {
+      final res = await _api.get(AppConstants.queuedPosts);
+      final raw = res['data'] ?? res['posts'] ?? res;
+      final list = raw is List ? raw.cast<Map<String, dynamic>>() : <Map<String, dynamic>>[];
+
+      final today = DateTime.now();
+      bool isToday(Map<String, dynamic> p) {
+        // Drafts sitting in this list without a confirmed schedule
+        // shouldn't show up as "today's schedule".
+        final status = (p['status'] ?? '').toString().toLowerCase();
+        if (status == 'draft' || status == 'cancelled' || status == 'failed') return false;
+
+        final rawDate = (p['scheduleAt'] ?? p['scheduleDate'] ?? p['scheduledDate'] ?? p['date'])?.toString();
+        DateTime? d;
+        if (rawDate != null && rawDate.isNotEmpty) {
+          d = DateTime.tryParse(rawDate);
+        }
+        d ??= DateTime.tryParse((p['scheduledAt'] ?? '').toString());
+        if (d == null) return false;
+        return d.year == today.year && d.month == today.month && d.day == today.day;
+      }
+
+      final todays = list.where(isToday).toList();
+      // Earliest scheduled time first.
+      todays.sort((a, b) => _scheduleTimeOf(a).compareTo(_scheduleTimeOf(b)));
+
+      setState(() { _todaySchedule = todays; _scheduleLoading = false; });
+    } on NetworkException catch (_) {
+      setState(() { _scheduleError = 'No internet connection.'; _scheduleLoading = false; });
+    } on UnauthorizedException catch (_) {
+      setState(() { _scheduleError = 'Session expired.'; _scheduleLoading = false; });
+    } on NotFoundException catch (_) {
+      setState(() { _todaySchedule = []; _scheduleLoading = false; });
+    } on AppException catch (e) {
+      setState(() { _scheduleError = e.message; _scheduleLoading = false; });
+    } catch (_) {
+      setState(() { _scheduleError = 'Something went wrong.'; _scheduleLoading = false; });
+    }
+  }
+
+  String _scheduleTimeOf(Map<String, dynamic> p) {
+    final scheduleTime = (p['scheduleTime'] ?? '').toString();
+    if (scheduleTime.isNotEmpty) return scheduleTime;
+    final dt = DateTime.tryParse((p['scheduleAt'] ?? '').toString());
+    if (dt != null) return DateFormat('HH:mm').format(dt.toLocal());
+    return '';
+  }
+
   Color _getStatusColor(String status) {
     switch (status.toLowerCase()) {
       case 'pending': return AppColors.warning;
@@ -716,6 +777,155 @@ class _SmmHomeState extends State<_SmmHome> {
     } catch (_) {
       return '—';
     }
+  }
+
+  // ── Today's Schedule builder ──────────────
+  String _formatScheduleTime(String? raw) {
+    if (raw == null || raw.isEmpty) return '';
+    try {
+      final t = DateFormat('HH:mm').parse(raw);
+      return DateFormat('hh:mm a').format(t);
+    } catch (_) {
+      return raw;
+    }
+  }
+
+  // scheduleTime ('HH:mm') is the primary source; if it's missing, fall
+  // back to the time portion of scheduleAt (a full ISO datetime).
+  String _displayScheduleTime(Map<String, dynamic> p) {
+    final scheduleTime = (p['scheduleTime'] ?? '').toString();
+    if (scheduleTime.isNotEmpty) return _formatScheduleTime(scheduleTime);
+    final scheduleAt = (p['scheduleAt'] ?? '').toString();
+    final dt = DateTime.tryParse(scheduleAt);
+    if (dt != null) return DateFormat('hh:mm a').format(dt.toLocal());
+    return '';
+  }
+
+  String _scheduleClientLabel(Map<String, dynamic> p) {
+    final client = p['client'];
+    if (client is Map) {
+      final name = client['companyName'] ?? client['name'];
+      if (name != null && name.toString().trim().isNotEmpty) return name.toString();
+    }
+    final content = (p['content'] as String? ?? '').trim();
+    if (content.isNotEmpty) {
+      return content.length > 40 ? '${content.substring(0, 40)}…' : content;
+    }
+    return 'No description';
+  }
+
+  Widget _buildTodaySchedule() {
+    if (_scheduleLoading) {
+      return Column(
+        children: List.generate(
+          2,
+              (i) => Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Container(
+              height: 66,
+              decoration: BoxDecoration(
+                  color: AppColors.surfaceLight,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppColors.border)),
+            ),
+          ),
+        ),
+      );
+    }
+    if (_scheduleError != null) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+            color: AppColors.error.withOpacity(0.06),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.error.withOpacity(0.3))),
+        child: Row(children: [
+          const Icon(Icons.error_outline_rounded, size: 16, color: AppColors.error),
+          const SizedBox(width: 8),
+          Expanded(child: Text(_scheduleError!, style: GoogleFonts.sora(fontSize: 12, color: AppColors.error))),
+          GestureDetector(
+            onTap: _fetchTodaySchedule,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(color: AppColors.error.withOpacity(0.12), borderRadius: BorderRadius.circular(8)),
+              child: Text('Retry', style: GoogleFonts.sora(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.error)),
+            ),
+          ),
+        ]),
+      );
+    }
+    if (_todaySchedule.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+            color: AppColors.surfaceLight,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.border)),
+        child: Row(children: [
+          const Icon(Icons.event_available_rounded, size: 18, color: AppColors.textMuted),
+          const SizedBox(width: 10),
+          Expanded(child: Text('No posts scheduled for today', style: GoogleFonts.sora(fontSize: 12, color: AppColors.textMuted))),
+        ]),
+      );
+    }
+
+    return Column(
+      children: _todaySchedule.asMap().entries.map((e) {
+        final p = e.value;
+        final rawPlatforms = p['platforms'];
+        final firstPlatform = (rawPlatforms is List && rawPlatforms.isNotEmpty)
+            ? rawPlatforms.first.toString().toLowerCase()
+            : '';
+        final meta = _schedulePlatformMeta[firstPlatform];
+        final title = meta?.label ?? (firstPlatform.isEmpty ? 'Scheduled Post' : '${firstPlatform[0].toUpperCase()}${firstPlatform.substring(1)} Post');
+        final icon = meta?.icon ?? Icons.public_rounded;
+        final color = meta?.color ?? AppColors.smmColor;
+        final time = _displayScheduleTime(p);
+        final subtitle = _scheduleClientLabel(p);
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: CommonCard(
+            padding: const EdgeInsets.all(14),
+            child: Row(children: [
+              Container(
+                  width: 38, height: 38,
+                  decoration: BoxDecoration(
+                      color: color.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(10)),
+                  child: Icon(icon, color: color, size: 18)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title,
+                          style: GoogleFonts.sora(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary)),
+                      Text(subtitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.sora(
+                              fontSize: 11,
+                              color: AppColors.textSecondary)),
+                    ]),
+              ),
+              Text(time,
+                  style: GoogleFonts.sora(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.smmColor)),
+            ]),
+          ).animate(
+              delay: Duration(milliseconds: 620 + e.key * 80))
+              .fadeIn(),
+        );
+      }).toList(),
+    );
   }
 
   @override
@@ -1009,52 +1219,13 @@ class _SmmHomeState extends State<_SmmHome> {
               ).animate(delay: 550.ms).fadeIn(),
               const SizedBox(height: 12),
 
-              ..._schedule.asMap().entries.map((e) {
-                final s = e.value;
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: CommonCard(
-                    padding: const EdgeInsets.all(14),
-                    child: Row(children: [
-                      Container(
-                          width: 38, height: 38,
-                          decoration: BoxDecoration(
-                              color: s.$5.withOpacity(0.15),
-                              borderRadius: BorderRadius.circular(10)),
-                          child: Icon(s.$4, color: s.$5, size: 18)),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(s.$1,
-                                  style: GoogleFonts.sora(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                      color: AppColors.textPrimary)),
-                              Text(s.$2,
-                                  style: GoogleFonts.sora(
-                                      fontSize: 11,
-                                      color: AppColors.textSecondary)),
-                            ]),
-                      ),
-                      Text(s.$3,
-                          style: GoogleFonts.sora(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.smmColor)),
-                    ]),
-                  ).animate(
-                      delay: Duration(milliseconds: 620 + e.key * 80))
-                      .fadeIn(),
-                );
-              }),
+              _buildTodaySchedule(),
 
               const SizedBox(height: 80),
             ],
           ),
         ));
-    }
+  }
 }
 
 // ─────────────────────────────────────────
@@ -1271,17 +1442,17 @@ class _PostCardSkeleton extends StatelessWidget {
   );
 }
 
-    //     style:
-    //     GoogleFonts.sora(fontSize: 13, color: AppColors.textPrimary),
-    //     decoration: InputDecoration(
-    //       hintText: hint,
-    //       hintStyle:
-    //       GoogleFonts.sora(fontSize: 13, color: AppColors.textMuted),
-    //       border: InputBorder.none,
-    //       contentPadding: const EdgeInsets.all(14),
-    //     ),
-    //   ),
-    // );
+//     style:
+//     GoogleFonts.sora(fontSize: 13, color: AppColors.textPrimary),
+//     decoration: InputDecoration(
+//       hintText: hint,
+//       hintStyle:
+//       GoogleFonts.sora(fontSize: 13, color: AppColors.textMuted),
+//       border: InputBorder.none,
+//       contentPadding: const EdgeInsets.all(14),
+//     ),
+//   ),
+// );
 
 Widget _emptyState({
   required IconData icon,

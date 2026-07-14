@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
 
+import '../services/oauth_deep_link_service.dart';
 import '../services/social_service.dart';
 
 class SocialProvider extends ChangeNotifier {
@@ -46,11 +48,23 @@ class SocialProvider extends ChangeNotifier {
 
     try {
       _codeVerifier = _createCodeVerifier();
-      return await _service.fetchAuthorizationUrl(
+      final authUrl = await _service.fetchAuthorizationUrl(
         platform,
         clientId: clientId,
         key: key,
       );
+
+      // Persist BEFORE the browser opens — if Android kills this
+      // process while the user is signing in, this is what lets
+      // resumePendingConnectIfAny() finish the connect after restart.
+      await OAuthDeepLinkService.instance.persistPendingFlow(
+        clientId: clientId,
+        platform: platform,
+        codeVerifier: _codeVerifier!,
+        key: key,
+      );
+
+      return authUrl;
     } catch (error) {
       _errorMessage = error.toString();
       return null;
@@ -91,6 +105,43 @@ class SocialProvider extends ChangeNotifier {
       return false;
     } finally {
       _codeVerifier = null;
+      _setActionLoading(clientId, platform, false);
+      // The flow is done one way or another — drop any persisted state
+      // for it so a later cold-start doesn't try to replay it.
+      unawaited(OAuthDeepLinkService.instance.clearPendingFlow());
+    }
+  }
+
+  /// Resumes a connect flow that completed its OAuth redirect while the
+  /// app was cold-starting (Android killed the process mid-flow — see
+  /// OAuthDeepLinkService for the full explanation). Call this once at
+  /// app startup, after the widget tree is up. Returns true if a
+  /// pending flow was found and successfully completed.
+  Future<bool> resumePendingConnectIfAny() async {
+    final pending = await OAuthDeepLinkService.instance.takePersistedCallback();
+    if (pending == null) return false;
+
+    final clientId = pending['clientId']!;
+    final platform = pending['platform']!;
+
+    _setActionLoading(clientId, platform, true);
+    _errorMessage = null;
+
+    try {
+      await _service.connectSocialPlatform(
+        platform: platform,
+        code: pending['code']!,
+        state: pending['state']!,
+        codeVerifier: pending['codeVerifier']!,
+        clientId: clientId,
+        key: pending['key'],
+      );
+      await loadClients();
+      return true;
+    } catch (error) {
+      _errorMessage = error.toString();
+      return false;
+    } finally {
       _setActionLoading(clientId, platform, false);
     }
   }

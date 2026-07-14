@@ -83,7 +83,11 @@ class SocialPlatformModel {
     final key = (json['platform'] ?? json['network'] ?? '').toString().toLowerCase();
     final meta = _meta[key] ?? _PlatformMeta(key.isEmpty ? 'Unknown' : key, const Color(0xFF607D8B), Icons.public);
 
-    final accountId = json['id']?.toString() ?? json['accountId']?.toString() ?? json['_id']?.toString();
+    // '_id' (the Mongo document id) must win here — it's what the backend's
+    // disconnect endpoint expects. 'accountId' from the API is the
+    // platform's own id (e.g. a YouTube channel id like "UCbkV..."), NOT
+    // the id disconnect needs, so it's only a fallback.
+    final accountId = json['_id']?.toString() ?? json['id']?.toString() ?? json['accountId']?.toString();
     final connectedAs = json['username']?.toString() ?? json['name']?.toString() ?? json['displayName']?.toString();
 
     // The API item itself decides connected/not — default to true only

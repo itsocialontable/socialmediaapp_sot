@@ -87,7 +87,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
             crossAxisCount: 2,
             crossAxisSpacing: 12,
             mainAxisSpacing: 12,
-            childAspectRatio: 1.5,
+            childAspectRatio: 1,
             children: [
               StatCard(label: 'Total Reach', value: '156.2K',icon: Icons.people_rounded, color: widget.accentColor),
               StatCard(label: 'Engagement', value: '28.4K',  icon: Icons.favorite_rounded, color: AppColors.secondary),

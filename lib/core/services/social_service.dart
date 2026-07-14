@@ -14,7 +14,11 @@ class SocialService {
       }) async {
     final body = await _api.get(
       '${AppConstants.socialAuth}/$platform',
-      queryParams: _extraParams(clientId: clientId, key: key),
+      // `source: app` tells the backend this request came from the mobile
+      // app (not the website), so /auth/callback knows to redirect to the
+      // smmapp://oauth-callback deep link instead of the normal website
+      // callback page.
+      queryParams: _extraParams(clientId: clientId, key: key, source: 'app'),
     );
 
     if (body['success'] == true && body['url'] is String) {
@@ -58,12 +62,12 @@ class SocialService {
         String? clientId,
         String? key,
       }) async {
-    final body = await _api.post(
+    final body = await _api.delete(
       '${AppConstants.socialDisconnect}/$accountId',
-      body: {
-        if (clientId != null) 'clientId': clientId,
-        if (key != null) 'key': key,
-      },
+      // body: {
+      //   if (clientId != null) 'clientId': clientId,
+      //   if (key != null) 'key': key,
+      // },
     );
 
     if (body['success'] == true) return;
@@ -108,17 +112,35 @@ class SocialService {
         <dynamic>[];
 
     final list = raw is List ? raw : <dynamic>[];
-    return list
+    final clients = list
         .whereType<Object>()
         .map((e) => SmmClientModel.fromJson(Map<String, dynamic>.from(e as Map)))
         .toList();
+
+    // `/api/smm/clients` only gives back platform *names* (no connection
+    // status), so on its own every platform looks "not connected" and the
+    // Disconnect action never appears — even right after a successful
+    // connect. To fix that, pull the real connection state per client from
+    // `/api/smm/account` and merge it into that client's platform list.
+    await Future.wait(clients.map((client) async {
+      try {
+        final connectedAccounts = await fetchConnectedAccounts(clientId: client.id);
+        client.mergeConnectedAccounts(connectedAccounts);
+      } catch (_) {
+        // Don't let one client's enrichment failure break the whole list —
+        // that client's platforms simply stay at their current state.
+      }
+    }));
+
+    return clients;
   }
 
-  Map<String, dynamic>? _extraParams({String? clientId, String? key}) {
-    if (clientId == null && key == null) return null;
+  Map<String, dynamic>? _extraParams({String? clientId, String? key, String? source}) {
+    if (clientId == null && key == null && source == null) return null;
     return {
       if (clientId != null) 'clientId': clientId,
       if (key != null) 'key': key,
+      if (source != null) 'source': source,
     };
   }
 
@@ -189,6 +211,28 @@ class SmmClientModel {
         .toList();
 
     return SmmClientModel(id: id, name: name, email: email, key: key, platforms: platforms);
+  }
+
+  /// Overlays real connection data (from `/api/smm/account`) onto this
+  /// client's platform list (which, when it came from `/api/smm/clients`,
+  /// may only be bare platform names with `connected: false`). Matching is
+  /// done by platform key (e.g. "instagram"), and each match replaces the
+  /// placeholder entry with the fully connected one (accountId,
+  /// connectedAs, connected: true, etc.) so the UI shows the correct
+  /// "Connected" state and the Disconnect action.
+  void mergeConnectedAccounts(List<SocialPlatformModel> connectedAccounts) {
+    if (connectedAccounts.isEmpty) return;
+
+    final byPlatform = <String, SocialPlatformModel>{
+      for (final account in connectedAccounts) account.platform: account,
+    };
+
+    for (var i = 0; i < platforms.length; i++) {
+      final match = byPlatform[platforms[i].platform];
+      if (match != null) {
+        platforms[i] = match;
+      }
+    }
   }
 }
 

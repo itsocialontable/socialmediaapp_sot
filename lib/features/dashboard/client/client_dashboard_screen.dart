@@ -148,7 +148,7 @@ class _ClientHome extends StatelessWidget {
                 crossAxisCount: 2,
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 12,
-                childAspectRatio: 1.2,
+                childAspectRatio: 1,
                 children: [
                   StatCard(
                     label: 'Active Projects',

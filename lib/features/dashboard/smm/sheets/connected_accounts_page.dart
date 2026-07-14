@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import '../../../../core/constants/app_constants.dart';
 import '../../../../core/providers/social_provider.dart';
+import '../../../../core/services/oauth_deep_link_service.dart';
 import '../../../../core/services/social_service.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../model/social_platform_model.dart';
 import '../../../../shared/widgets/common_widgets.dart';
-import 'channels/oauth_webview_screen.dart';
 
 // ─────────────────────────────────────────
 // CONNECTED ACCOUNTS PAGE
@@ -33,7 +32,6 @@ class _ConnectedAccountsPageState extends State<ConnectedAccountsPage> {
   }
 
   Future<void> _startConnect(SmmClientModel client, SocialPlatformModel platform) async {
-    final navigator = Navigator.of(context);
     final provider = context.read<SocialProvider>();
     final authUrl = await provider.prepareAuthUrl(
       clientId: client.id,
@@ -46,14 +44,14 @@ class _ConnectedAccountsPageState extends State<ConnectedAccountsPage> {
       return;
     }
 
-    final callbackData = await navigator.push<Map<String, String?>>(MaterialPageRoute(
-      builder: (_) => OAuthWebviewScreen(
-        authUrl: authUrl,
-        redirectUrl: AppConstants.redirectUri,
-      ),
-    ));
+    // IMPORTANT: Google blocks OAuth sign-in inside embedded WebViews
+    // (Error 403: disallowed_useragent). We now open the auth URL in the
+    // system browser and get the result back via a deep link instead of
+    // pushing an in-app WebView screen.
+    final callbackData = await OAuthDeepLinkService.instance.authenticate(authUrl);
 
     if (!mounted || callbackData == null) {
+      _showSnackbar('Authorization was cancelled or timed out.');
       return;
     }
 
@@ -433,24 +431,14 @@ class _ConnectedAccountRow extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  platform.name,
-                  style: GoogleFonts.sora(fontSize: 13.5, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
-                ),
-                if (platform.connectedAs != null && platform.connectedAs!.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    '@${platform.connectedAs}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.sora(fontSize: 11.5, color: AppColors.textSecondary),
-                  ),
-                ],
-              ],
-            ),
+            child: (platform.connectedAs != null && platform.connectedAs!.isNotEmpty)
+                ? Text(
+              '@${platform.connectedAs}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.sora(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+            )
+                : const SizedBox.shrink(),
           ),
           const SizedBox(width: 8),
           if (loading)
@@ -502,37 +490,46 @@ class _PlatformChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final bool isDone = platform.connected;
 
-    return Opacity(
-      opacity: isDone ? 0.5 : 1,
+    return Tooltip(
+      message: platform.name,
       child: GestureDetector(
         onTap: loading ? null : onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          width: 40,
+          height: 40,
+          alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: isDone ? AppColors.surfaceLight : platform.color.withOpacity(0.08),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: isDone ? AppColors.border : platform.color.withOpacity(0.3)),
+            color: platform.color.withOpacity(0.08),
+            shape: BoxShape.circle,
+            border: Border.all(color: isDone ? AppColors.success.withOpacity(0.6) : platform.color.withOpacity(0.3)),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
+          child: Stack(
+            clipBehavior: Clip.none,
+            alignment: Alignment.center,
             children: [
               if (loading)
                 SizedBox(
-                  width: 13,
-                  height: 13,
+                  width: 15,
+                  height: 15,
                   child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(platform.color)),
                 )
               else
-                Icon(isDone ? Icons.check_rounded : platform.icon, size: 15, color: isDone ? AppColors.textMuted : platform.color),
-              const SizedBox(width: 6),
-              Text(
-                platform.name,
-                style: GoogleFonts.sora(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600,
-                  color: isDone ? AppColors.textMuted : platform.color,
+                Icon(platform.icon, size: 18, color: platform.color),
+              if (isDone && !loading)
+                Positioned(
+                  bottom: -2,
+                  right: -2,
+                  child: Container(
+                    width: 14,
+                    height: 14,
+                    decoration: BoxDecoration(
+                      color: AppColors.success,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AppColors.surface, width: 1.5),
+                    ),
+                    child: const Icon(Icons.check_rounded, size: 9, color: Colors.white),
+                  ),
                 ),
-              ),
             ],
           ),
         ),

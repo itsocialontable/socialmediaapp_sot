@@ -145,14 +145,20 @@ class _PostsTabPageState extends State<PostsTabPage>
       await _api.delete('/api/posts/draft/$id');
       _fetchDrafts();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Draft delete ho gaya',
-              style: GoogleFonts.sora(fontSize: 13)),
-          backgroundColor: AppColors.error,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          margin: const EdgeInsets.all(16),
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Draft deleted successfully',
+              style: GoogleFonts.sora(fontSize: 13),
+            ),
+            backgroundColor: AppColors.error,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            margin: const EdgeInsets.all(16),
+          ),
+        );
       }
     } on NetworkException catch (_) {
       if (mounted) {
@@ -168,7 +174,7 @@ class _PostsTabPageState extends State<PostsTabPage>
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Delete failed, dobara try karo',
+          content: Text('Delete failed, Please try again.',
               style: GoogleFonts.sora(fontSize: 13)),
           backgroundColor: AppColors.error,
           behavior: SnackBarBehavior.floating,
@@ -206,10 +212,12 @@ class _PostsTabPageState extends State<PostsTabPage>
         ]),
         content: Text(
           preview.isNotEmpty
-              ? 'Kya aap yeh draft delete karna chahte hain?\n\n"${preview.length > 60 ? '${preview.substring(0, 60)}…' : preview}"'
-              : 'Kya aap yeh draft delete karna chahte hain?',
+              ? 'Do you want to delete this draft?\n\n"${preview.length > 60 ? '${preview.substring(0, 60)}…' : preview}"'
+              : 'Do you want to delete this draft?',
           style: GoogleFonts.sora(
-              fontSize: 12, color: AppColors.textSecondary),
+            fontSize: 12,
+            color: AppColors.textSecondary,
+          ),
         ),
         actions: [
           TextButton(
@@ -467,33 +475,14 @@ class _PostsTabPageState extends State<PostsTabPage>
                   unselectedLabelColor: AppColors.textSecondary,
                   tabs: [
                     Tab(
-                      child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.queue_rounded, size: 13),
-                            const SizedBox(width: 4),
-                            Text('Queue (${_queuePosts.length})'),
-                          ]),
+                      child:  Text('Queue (${_queuePosts.length})'),
                     ),
                     Tab(
-                      child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.drafts_rounded, size: 13),
-                            const SizedBox(width: 4),
-                            Text('Drafts (${_draftPosts.length})'),
-                          ]),
+                      child: Text('Drafts (${_draftPosts.length})'),
                     ),
                     Tab(
-                      child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.check_circle_outline_rounded,
-                                size: 13),
-                            const SizedBox(width: 4),
-                            Text(
-                                'Published (${_publishedPosts.length})'),
-                          ]),
+                      child:   Text(
+                          'Published (${_publishedPosts.length})'),
                     ),
                   ],
                 ),
