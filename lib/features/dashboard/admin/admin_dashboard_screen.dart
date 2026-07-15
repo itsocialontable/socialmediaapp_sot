@@ -12,6 +12,7 @@ import '../../../shared/pages/profile_page.dart';
 import '../../../shared/pages/messages_page.dart';
 import '../../../shared/pages/analytics_page.dart';
 import 'pages/admin_inner_pages.dart';
+import 'pages/admin_assign_task_page.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -273,27 +274,50 @@ class _AdminHomeState extends State<_AdminHome> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Quick Actions', style: GoogleFonts.sora(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+              Text('Assign Task', style: GoogleFonts.sora(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
             ],
           ).animate(delay: 300.ms).fadeIn(),
 
           const SizedBox(height: 12),
 
-          GridView.count(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            crossAxisCount: 3,
-            crossAxisSpacing: 10,
-            mainAxisSpacing: 10,
-            childAspectRatio: 1.1,
-            children: [
-              _QuickAction(Icons.people_rounded, 'Clients', AppColors.adminColor, () => widget.onNav(1)),
-              _QuickAction(Icons.person_rounded, 'Team', AppColors.secondary, () => widget.onNav(2)),
-              // _QuickAction(Icons.folder_rounded, 'Projects', AppColors.accent, () => onNav(3)),
-              _QuickAction(Icons.bar_chart_rounded, 'Reports', AppColors.info, () => widget.onNav(4)),
-              // _QuickAction(Icons.settings_rounded, 'Settings', AppColors.warning, () {}),
-              // _QuickAction(Icons.payment_rounded, 'Payments', AppColors.success, () {}),
-            ],
+          GestureDetector(
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const AdminAssignTaskPage()),
+            ),
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: AppColors.adminGradient,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [BoxShadow(color: AppColors.adminColor.withOpacity(0.35), blurRadius: 16, offset: const Offset(0, 6))],
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 46, height: 46,
+                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.18), borderRadius: BorderRadius.circular(12)),
+                    child: const Icon(Icons.assignment_add, color: Colors.white, size: 22),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Assign a New Task', style: GoogleFonts.sora(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)),
+                        const SizedBox(height: 2),
+                        Text('Assign a design project to a client & designer', style: GoogleFonts.sora(fontSize: 11, color: Colors.white70)),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    width: 30, height: 30,
+                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.18), borderRadius: BorderRadius.circular(8)),
+                    child: const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 16),
+                  ),
+                ],
+              ),
+            ),
           ).animate(delay: 400.ms).fadeIn(),
 
           const SizedBox(height: 32),

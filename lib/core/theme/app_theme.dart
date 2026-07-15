@@ -154,6 +154,16 @@ class AppTheme {
         ),
       ),
 
+      // Fixes invisible text cursor: without this, the cursor falls back to
+      // colorScheme.primary (dark green) which blends into the app's dark
+      // surfaces/borders and can't be seen while typing in any TextField
+      // or TextFormField across the app.
+      textSelectionTheme: TextSelectionThemeData(
+        cursorColor: AppColors.textPrimary,
+        selectionColor: AppColors.primary.withOpacity(0.35),
+        selectionHandleColor: AppColors.primary,
+      ),
+
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: AppColors.surfaceLight,

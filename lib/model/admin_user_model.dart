@@ -61,8 +61,8 @@ class AdminUserModel {
       projectTitle:   json['projectTitle']?.toString(),
       duration:       json['duration']?.toString(),
       gstNumber:      json['gstNumber']?.toString(),
-      platform:       json['platform'] is List
-          ? (json['platform'] as List).map((e) => e.toString().toLowerCase()).toList()
+      platform:       (json['platforms'] ?? json['platform']) is List
+          ? ((json['platforms'] ?? json['platform']) as List).map((e) => e.toString().toLowerCase()).toList()
           : <String>[],
     );
   }

@@ -335,7 +335,7 @@ class _AddClientSheetState extends State<_AddClientSheet> {
         'phoneNumber': _phoneCtrl.text.trim(),
         'companyName': _companyCtrl.text.trim(),
         'industry': _industryCtrl.text.trim(),
-        'platform': _selectedPlatforms.toList(),
+        'platforms': _selectedPlatforms.toList(),
       });
       final msg = (res['msg'] ?? res['message'] ?? 'Client created successfully').toString();
       if (mounted) {
@@ -514,7 +514,7 @@ class _EditClientSheetState extends State<_EditClientSheet> {
           'phoneNumber': _phoneCtrl.text.trim(),
           'companyName': _companyCtrl.text.trim(),
           'industry': _industryCtrl.text.trim(),
-          'platform': _selectedPlatforms.toList(),
+          'platforms': _selectedPlatforms.toList(),
         },
       );
       final msg = (res['msg'] ?? res['message'] ?? 'Client updated successfully').toString();
@@ -1992,7 +1992,7 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
       const known = {
         '_id', 'id', 'name', 'email', 'role', 'phoneNumber', 'phone',
         'companyName', 'industry', 'budget', 'address', 'specialization',
-        'status', 'platform', '__v', 'password',
+        'status', 'platform', 'platforms', '__v', 'password',
         'projectTitle', 'duration', 'gstNumber',
       };
       const internal = {
