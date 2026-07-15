@@ -70,6 +70,7 @@ class OAuthDeepLinkService {
     _appLinks.getInitialLink().then((uri) {
       if (uri != null) _handleIncomingUri(uri);
     }).catchError((_) {});
+
   }
 
   void dispose() {
