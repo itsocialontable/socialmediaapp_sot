@@ -207,7 +207,7 @@ class _AdminAssignTaskPageState extends State<AdminAssignTaskPage> {
         if (_assets.isNotEmpty)
           'assets': await Future.wait(_assets.map((f) async => MultipartFile.fromFile(f.path, filename: f.name))),
       });
-      await _api.postMultipart(AppConstants.createDesignProject, formData: formData);
+      await _api.postMultipart(AppConstants.createAdminDesignProject, formData: formData);
       if (ctx.mounted) {
         Navigator.pop(ctx);
         _showSnack('Design project created successfully! 🎨', AppColors.success, Icons.check_circle_rounded);

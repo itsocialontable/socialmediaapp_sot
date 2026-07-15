@@ -24,6 +24,7 @@ class AppConstants {
   // ── SMM ────────────────────────────────────────────────────────────────
   static const String smmDashboard        = '/api/smm/dashboard';
   static const String createDesignProject = '/api/smm/design-projects';
+  static const String createAdminDesignProject = '/api/admin/design-projects';
   static const String createPost          = '/api/posts/create';
   static const String saveDraftPost       = '/api/posts/draft';
   static const String queuedPosts         = '/api/posts/queued';
