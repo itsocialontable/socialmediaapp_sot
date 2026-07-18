@@ -39,24 +39,38 @@ class UpdateService {
       final packageInfo = await PackageInfo.fromPlatform();
       final currentBuild = int.tryParse(packageInfo.buildNumber) ?? 0;
 
-      print('=== UPDATE CHECK === App build: $currentBuild');
+      print('=== UPDATE CHECK ===');
+      print('App build: $currentBuild');
+      print('URL: $_versionCheckUrl');
 
       final res = await _dio
           .get(_versionCheckUrl)
           .timeout(const Duration(seconds: 10));
 
-      if (res.statusCode != 200 || res.data == null) return null;
+      print('Status Code: ${res.statusCode}');
+      print('Response: ${res.data}');
 
-      // ResponseType.plain se string milti hai — json decode karo
+      if (res.statusCode != 200 || res.data == null) {
+        print('Request failed');
+        return null;
+      }
+
       final jsonData = json.decode(res.data.toString()) as Map<String, dynamic>;
       final info = UpdateInfo.fromJson(jsonData);
 
-      print('GitHub build: ${info.latestBuild}, App build: $currentBuild');
+      print('GitHub build: ${info.latestBuild}');
+      print('GitHub version: ${info.latestVersion}');
 
-      if (info.latestBuild > currentBuild) return info;
+      if (info.latestBuild > currentBuild) {
+        print('Update Available');
+        return info;
+      }
+
+      print('Already Latest');
       return null;
-    } catch (e) {
+    } catch (e, s) {
       print('UPDATE CHECK ERROR: $e');
+      print(s);
       return null;
     }
   }
