@@ -29,8 +29,7 @@ class UpdateInfo {
 
 class UpdateService {
   static const String _versionCheckUrl =
-      'https://raw.githubusercontent.com/Growthcraft360/SocialMediaApp/main/version.json';
-
+      'https://raw.githubusercontent.com/itsocialontable/socialmediaapp/main/version.json';
   static final Dio _dio = Dio(BaseOptions(
     responseType: ResponseType.plain, // JSON string ke roop mein lo
   ));
