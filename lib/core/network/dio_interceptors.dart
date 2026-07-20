@@ -29,13 +29,16 @@ class AuthInterceptor extends Interceptor {
     final statusCode = err.response?.statusCode;
 
     if (statusCode == 401) {
-      await _handleUnauthorized();
+      await handleUnauthorized();
     }
 
     handler.next(err);
   }
 
-  Future<void> _handleUnauthorized() async {
+  // ── Public so it can be triggered from anywhere a 401 is detected ──
+  // (e.g. ApiService, since Dio's validateStatus treats 401 as a normal
+  // response rather than a DioException, so onError above never fires for it).
+  static Future<void> handleUnauthorized() async {
     if (_isHandlingUnauthorized) return;
     _isHandlingUnauthorized = true;
 

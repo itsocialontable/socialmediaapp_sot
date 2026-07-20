@@ -10,6 +10,7 @@
 
 import 'package:dio/dio.dart';
 import 'dio_client.dart';
+import 'dio_interceptors.dart';
 import 'error_handler.dart';
 import '../errors/app_exceptions.dart';
 
@@ -145,6 +146,11 @@ class ApiService {
       case 400:
         throw ValidationException(message);
       case 401:
+        // Centralized handling: works for every screen/provider that calls
+        // ApiService, without needing per-screen redirect logic. Fire-and-forget
+        // (this method is sync) — the caller's UnauthorizedException still
+        // propagates normally as a fallback/local error state.
+        AuthInterceptor.handleUnauthorized();
         throw UnauthorizedException(message);
       case 403:
         throw UnauthorizedException('Access denied.');
