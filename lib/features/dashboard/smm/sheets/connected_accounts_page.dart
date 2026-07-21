@@ -33,9 +33,14 @@ class _ConnectedAccountsPageState extends State<ConnectedAccountsPage> {
 
   Future<void> _startConnect(SmmClientModel client, SocialPlatformModel platform) async {
     final provider = context.read<SocialProvider>();
+
+    // Instagram ab apna naya login flow use karta hai — backend ko
+    // "instagram" ki jagah "instagramLogin" bhejna hota hai. Baaki sab same.
+    final apiPlatform = platform.platform.toLowerCase() == 'instagram' ? 'instagramLogin' : platform.platform;
+
     final authUrl = await provider.prepareAuthUrl(
       clientId: client.id,
-      platform: platform.platform,
+      platform: apiPlatform,
       key: client.key,
     );
 
@@ -65,7 +70,7 @@ class _ConnectedAccountsPageState extends State<ConnectedAccountsPage> {
 
     final success = await provider.completeSocialConnect(
       clientId: client.id,
-      platform: platform.platform,
+      platform: apiPlatform,
       code: code,
       state: state,
       key: client.key,

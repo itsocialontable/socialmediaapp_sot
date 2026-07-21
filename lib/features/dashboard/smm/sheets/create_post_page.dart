@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:developer';
 import 'dart:io';
 import 'package:dio/dio.dart';
@@ -17,11 +18,14 @@ import 'assign_task_page.dart' show UserOption;
 // PLATFORM OPTION
 // ─────────────────────────────────────────
 class PlatformOption {
-  final String id, name;
+  final String id;          // unique chip id (accountId for facebook, platform key otherwise)
+  final String platform;    // canonical platform key, e.g. "facebook"
+  final String name;
   final Color color;
   final IconData icon;
   final String? connectedAs;
-  const PlatformOption(this.id, this.name, this.color, this.icon, {this.connectedAs});
+  final String? accountId;  // page/account id, only set for facebook
+  const PlatformOption(this.id, this.platform, this.name, this.color, this.icon, {this.connectedAs, this.accountId});
 }
 
 // Known platform → (label, color, icon) lookup used to render whatever
@@ -46,8 +50,19 @@ const Map<String, _PlatformMeta> _kPlatformMeta = {
 PlatformOption _platformOptionFromJson(Map<String, dynamic> json) {
   final key = (json['platform'] ?? json['network'] ?? '').toString().toLowerCase();
   final meta = _kPlatformMeta[key] ?? _PlatformMeta(key.isEmpty ? 'Unknown' : key, AppColors.textMuted, Icons.public_rounded);
-  final connectedAs = json['username']?.toString() ?? json['name']?.toString() ?? json['displayName']?.toString();
-  return PlatformOption(key, meta.label, meta.color, meta.icon, connectedAs: connectedAs);
+
+  // Ab har platform (Threads, Pinterest, YouTube, Facebook) ke neeche account name dikhega.
+  final connectedAs = json['accountName']?.toString() ??
+      json['username']?.toString() ??
+      json['name']?.toString() ??
+      json['displayName']?.toString();
+
+  // Facebook ke sabhi accounts ka "platform" field "facebook" hi hota hai, isliye unique
+  // chip id ke liye accountId use karo - warna sab chips ek hi selection share kar lete hain.
+  final accountId = key == 'facebook' ? (json['accountId']?.toString() ?? json['_id']?.toString()) : null;
+  final uniqueId = accountId ?? key;
+
+  return PlatformOption(uniqueId, key, meta.label, meta.color, meta.icon, connectedAs: connectedAs, accountId: accountId);
 }
 
 // ─────────────────────────────────────────
@@ -265,43 +280,108 @@ class _CreatePostPageState extends State<CreatePostPage> {
         ]),
       );
     }
-    return Wrap(
-      spacing: 8, runSpacing: 8,
-      children: _platforms.map((p) {
-        final sel = _selectedPlatforms.contains(p.id);
-        return GestureDetector(
-          onTap: () => setState(() => sel ? _selectedPlatforms.remove(p.id) : _selectedPlatforms.add(p.id)),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: sel ? p.color.withOpacity(0.18) : AppColors.surfaceLight,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: sel ? p.color : AppColors.border),
-            ),
-            child: Row(
+    // Facebook ke multiple accounts ko alag group mein daalo, baaki platforms waise hi ek row mein.
+    final facebookAccounts = _platforms.where((p) => p.platform == 'facebook').toList();
+    final otherPlatforms = _platforms.where((p) => p.platform != 'facebook').toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (otherPlatforms.isNotEmpty)
+          Wrap(spacing: 8, runSpacing: 8, children: otherPlatforms.map(_platformChip).toList()),
+        if (otherPlatforms.isNotEmpty && facebookAccounts.isNotEmpty) const SizedBox(height: 10),
+        if (facebookAccounts.isNotEmpty) _buildFacebookGroup(facebookAccounts),
+      ],
+    );
+  }
+
+  // Ek chip ka UI. Facebook ke liye sirf account name dikhta hai (upar group header mein
+  // "Facebook" already likha hota hai), baaki platforms apna name dikhate hain jaise pehle.
+  Widget _platformChip(PlatformOption p) {
+    final sel = _selectedPlatforms.contains(p.id);
+    final isFacebook = p.platform == 'facebook';
+    final primaryLabel = isFacebook ? (p.connectedAs ?? p.name) : p.name;
+
+    return GestureDetector(
+      onTap: () => setState(() => sel ? _selectedPlatforms.remove(p.id) : _selectedPlatforms.add(p.id)),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: sel ? p.color.withOpacity(0.18) : AppColors.surfaceLight,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: sel ? p.color : AppColors.border),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(p.icon, color: sel ? p.color : AppColors.textSecondary, size: 16),
+            const SizedBox(width: 6),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(p.icon, color: sel ? p.color : AppColors.textSecondary, size: 16),
-                const SizedBox(width: 6),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(p.name, style: GoogleFonts.sora(fontSize: 12, fontWeight: FontWeight.w600, color: sel ? p.color : AppColors.textSecondary)),
-                    if (p.connectedAs != null)
-                      Text(p.connectedAs!, style: GoogleFonts.sora(fontSize: 9, color: sel ? p.color.withOpacity(0.8) : AppColors.textMuted)),
-                  ],
-                ),
-                if (sel) ...[
-                  const SizedBox(width: 6),
-                  Icon(Icons.check_circle_rounded, size: 13, color: p.color),
-                ],
+                Text(primaryLabel, style: GoogleFonts.sora(fontSize: 12, fontWeight: FontWeight.w600, color: sel ? p.color : AppColors.textSecondary)),
+                if (!isFacebook && p.connectedAs != null)
+                  Text(p.connectedAs!, style: GoogleFonts.sora(fontSize: 9, color: sel ? p.color.withOpacity(0.8) : AppColors.textMuted)),
               ],
             ),
+            if (sel) ...[
+              const SizedBox(width: 6),
+              Icon(Icons.check_circle_rounded, size: 13, color: p.color),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Facebook ke saare connected pages ek card mein, "Show all / Show less" ke saath
+  // Facebook ke saare connected pages ek fixed-height card mein, box ka size same rehta
+  // hai - agar accounts jyada hain to andar hi scroll ho jata hai (box bada nahi hota).
+  Widget _buildFacebookGroup(List<PlatformOption> accounts) {
+    const maxBoxHeight = 160.0;
+    final selectedCount = accounts.where((a) => _selectedPlatforms.contains(a.id)).length;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceLight,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.facebook_rounded, color: Color(0xFF1877F2), size: 18),
+              const SizedBox(width: 8),
+              Text('Facebook Pages (${accounts.length})',
+                  style: GoogleFonts.sora(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+              const Spacer(),
+              if (selectedCount > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(color: const Color(0xFF1877F2).withOpacity(0.15), borderRadius: BorderRadius.circular(20)),
+                  child: Text('$selectedCount selected',
+                      style: GoogleFonts.sora(fontSize: 10, fontWeight: FontWeight.w600, color: const Color(0xFF1877F2))),
+                ),
+            ],
           ),
-        );
-      }).toList(),
+          const SizedBox(height: 10),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: maxBoxHeight),
+            child: Scrollbar(
+              thumbVisibility: true,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.only(right: 4),
+                child: Wrap(spacing: 8, runSpacing: 8, children: accounts.map(_platformChip).toList()),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -345,10 +425,24 @@ class _CreatePostPageState extends State<CreatePostPage> {
     log("Selected: $_scheduledAt");
   }
 
+  // Selected chips (facebook accounts + other platforms) unke PlatformOption ke saath
+  List<PlatformOption> get _selectedPlatformOptions =>
+      _platforms.where((p) => _selectedPlatforms.contains(p.id)).toList();
+
+  // Backend ke purane "platforms" field ke liye - platform names, deduped (e.g. ["facebook", "threads"])
+  List<String> get _selectedPlatformNames =>
+      _selectedPlatformOptions.map((p) => p.platform).toSet().toList();
+
+  // Naya "platformAccounts" field - kaunsa specific Facebook page select hua hai
+  List<Map<String, String>> get _selectedPlatformAccounts => _selectedPlatformOptions
+      .where((p) => p.accountId != null)
+      .map((p) => {'platform': p.platform, 'accountId': p.accountId!})
+      .toList();
+
   PostModel _buildPost() => PostModel(
     id: DateTime.now().millisecondsSinceEpoch.toString(),
     content: _contentCtrl.text.trim(),
-    platforms: _selectedPlatforms.toList(),
+    platforms: _selectedPlatformNames,
     scheduledAt: _scheduledAt,
     hasMedia: _pickedFile != null,
     createdAt: DateTime.now(),
@@ -386,7 +480,9 @@ class _CreatePostPageState extends State<CreatePostPage> {
         final formData = FormData.fromMap({
           'content': _contentCtrl.text.trim(),
           'clientId': _selectedClient!.id,
-          for (int i = 0; i < _selectedPlatforms.length; i++) 'platforms[$i]': _selectedPlatforms.elementAt(i),
+          for (int i = 0; i < _selectedPlatformNames.length; i++) 'platforms[$i]': _selectedPlatformNames[i],
+          if (_selectedPlatformAccounts.isNotEmpty)
+            'platformAccounts': jsonEncode(_selectedPlatformAccounts),
           if (_scheduledAt != null)
             'scheduleDate':
             DateFormat('yyyy-MM-dd').format(_scheduledAt!),
@@ -401,7 +497,8 @@ class _CreatePostPageState extends State<CreatePostPage> {
         final body = <String, dynamic>{
           'content': _contentCtrl.text.trim(),
           'clientId': _selectedClient!.id,
-          'platforms': _selectedPlatforms.toList(),
+          'platforms': _selectedPlatformNames,
+          if (_selectedPlatformAccounts.isNotEmpty) 'platformAccounts': _selectedPlatformAccounts,
           if (_scheduledAt != null)
             'scheduleDate':
             DateFormat('yyyy-MM-dd').format(_scheduledAt!),
@@ -446,7 +543,9 @@ class _CreatePostPageState extends State<CreatePostPage> {
         final formData = FormData.fromMap({
           'content': _contentCtrl.text.trim(),
           if (_selectedClient != null) 'clientId': _selectedClient!.id,
-          for (int i = 0; i < _selectedPlatforms.length; i++) 'platforms[$i]': _selectedPlatforms.elementAt(i),
+          for (int i = 0; i < _selectedPlatformNames.length; i++) 'platforms[$i]': _selectedPlatformNames[i],
+          if (_selectedPlatformAccounts.isNotEmpty)
+            'platformAccounts': jsonEncode(_selectedPlatformAccounts),
           'media': await MultipartFile.fromFile(_pickedFile!.path, filename: _pickedFile!.name),
         });
         await _apiService.postMultipart(AppConstants.saveDraftPost, formData: formData);
@@ -454,7 +553,8 @@ class _CreatePostPageState extends State<CreatePostPage> {
         final body = <String, dynamic>{
           'content': _contentCtrl.text.trim(),
           if (_selectedClient != null) 'clientId': _selectedClient!.id,
-          'platforms': _selectedPlatforms.toList(),
+          'platforms': _selectedPlatformNames,
+          if (_selectedPlatformAccounts.isNotEmpty) 'platformAccounts': _selectedPlatformAccounts,
         };
         await _apiService.post(AppConstants.saveDraftPost, body: body);
       }
