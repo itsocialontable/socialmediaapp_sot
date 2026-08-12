@@ -55,7 +55,7 @@ class AppConstants {
   static const String socialConnect = "/api/social/connect";
   static const String socialDisconnect = "/api/social/disconnect";
   static const String redirectUri =
-      "https://smm-backend1-stkn.onrender.com/auth/callback";
+      "http://32.237.48.141/auth/callback";
   static const String publishedPosts = '/api/posts/published';
 
   // ── Secure Storage Keys ────────────────────────────────────────────────
