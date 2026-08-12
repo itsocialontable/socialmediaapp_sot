@@ -3,7 +3,7 @@
 class AppConstants {
   // Base URL
   // static const String baseUrl = 'https://smm-backend1-stkn.onrender.com';
-  static const String baseUrl = "http://32.237.48.141";
+  static const String baseUrl = "https://32.237.48.141";
 
   // ── Admin ──────────────────────────────────────────────────────────────
   static const String adminDashboard = '/api/admin/dashboard';
@@ -55,7 +55,7 @@ class AppConstants {
   static const String socialConnect = "/api/social/connect";
   static const String socialDisconnect = "/api/social/disconnect";
   static const String redirectUri =
-      "http://32.237.48.141/auth/callback";
+      "https://32.237.48.141/auth/callback";
   static const String publishedPosts = '/api/posts/published';
 
   // ── Secure Storage Keys ────────────────────────────────────────────────
