@@ -2,8 +2,8 @@
 
 class AppConstants {
   // Base URL
-  static const String baseUrl =
-      'https://smm-backend1-stkn.onrender.com';
+  // static const String baseUrl = 'https://smm-backend1-stkn.onrender.com';
+  static const String baseUrl = "http://32.237.48.141";
 
   // ── Admin ──────────────────────────────────────────────────────────────
   static const String adminDashboard = '/api/admin/dashboard';
