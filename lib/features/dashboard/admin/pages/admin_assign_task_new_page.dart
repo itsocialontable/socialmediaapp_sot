@@ -26,43 +26,51 @@ class UserOption {
 }
 
 // ─────────────────────────────────────────
-// ASSIGN TASK PAGE
+// ASSIGN TASK PAGE (NEW / SHORT FORM)
+// Same API as before (/api/admin/design-projects) but with
+// fewer fields: Client, Designer, SMM, Brand Name, Design Type,
+// Priority, Deadline, Description, Assets.
+// Target Audience, Brand Colors, Font Preferences & Revision
+// Limit have been removed.
 // ─────────────────────────────────────────
-class AssignTaskPage extends StatefulWidget {
-  const AssignTaskPage({super.key});
+class AdminAssignTaskNewPage extends StatefulWidget {
+  const AdminAssignTaskNewPage({super.key});
 
   @override
-  State<AssignTaskPage> createState() => _AssignTaskPageState();
+  State<AdminAssignTaskNewPage> createState() => _AdminAssignTaskNewPageState();
 }
 
-class _AssignTaskPageState extends State<AssignTaskPage> {
+class _AdminAssignTaskNewPageState extends State<AdminAssignTaskNewPage> {
   final _api = ApiService();
   final _picker = ImagePicker();
 
-  final _titleCtrl = TextEditingController();
+  final _brandNameCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
-  final _audienceCtrl = TextEditingController();
-  final _colorsCtrl = TextEditingController();
-  final _fontCtrl = TextEditingController();
 
   UserOption? _selectedClient;
   UserOption? _selectedDesigner;
+  UserOption? _selectedSmm;
   final Set<String> _selectedDesignTypes = {};
   String? _priority;
   DateTime? _deadline;
-  int _revisions = 2;
 
   List<UserOption> _clients = [];
   List<UserOption> _designers = [];
+  List<UserOption> _smms = [];
   bool _clientsLoading = true;
   bool _designersLoading = true;
+  bool _smmsLoading = true;
   String? _clientsError;
   String? _designersError;
+  String? _smmsError;
 
   final List<XFile> _assets = [];
   bool _isSubmitting = false;
 
-  static const _designTypes = ['Social Post', 'Logo', 'Banner', 'Video Thumbnail', 'Story', 'Reel Cover'];
+  static const _designTypes = ["Website New", "Website Rework", "SMM", "SEO", "GMB",
+    "Product Shoot", "Performance Marketing",
+    "Commercial Ads Shoot", "Podcast"
+  ];
   static const _priorities = ['Low', 'Medium', 'High', 'Urgent'];
   static const _pColors = {
     'Low': AppColors.info,
@@ -76,22 +84,20 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
     super.initState();
     _fetchClients();
     _fetchDesigners();
+    _fetchSmms();
   }
 
   @override
   void dispose() {
-    _titleCtrl.dispose();
+    _brandNameCtrl.dispose();
     _descCtrl.dispose();
-    _audienceCtrl.dispose();
-    _colorsCtrl.dispose();
-    _fontCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _fetchClients() async {
     setState(() { _clientsLoading = true; _clientsError = null; });
     try {
-      final res = await _api.get(AppConstants.smmClients);
+      final res = await _api.get(AppConstants.adminClients);
       final data = res['data'];
       final raw = (data is Map ? data['clients'] : null) ?? res['clients'] ?? res['users'] ?? res['data'] ?? res;
       final list = raw is List ? raw.cast<Map<String, dynamic>>() : <Map<String, dynamic>>[];
@@ -110,7 +116,7 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
   Future<void> _fetchDesigners() async {
     setState(() { _designersLoading = true; _designersError = null; });
     try {
-      final res = await _api.get(AppConstants.smmGraphicDesigners);
+      final res = await _api.get(AppConstants.adminGraphicDesigners);
       final data = res['data'];
       final raw = (data is Map ? data['designers'] : null) ?? res['designers'] ?? res['users'] ?? res['data'] ?? res;
       final list = raw is List ? raw.cast<Map<String, dynamic>>() : <Map<String, dynamic>>[];
@@ -123,6 +129,26 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
       setState(() { _designersError = e.message; _designersLoading = false; });
     } catch (_) {
       setState(() { _designersError = 'Failed to load designers'; _designersLoading = false; });
+    }
+  }
+
+  Future<void> _fetchSmms() async {
+    setState(() { _smmsLoading = true; _smmsError = null; });
+    try {
+      final res = await _api.get(AppConstants.adminSmm);
+      final data = res['data'];
+      // Backend returns: { success, msg, data: { smms: [...], pagination: {...} } }
+      final raw = (data is Map ? data['smms'] : null) ?? res['smms'] ?? res['smm'] ?? res['users'] ?? res['data'] ?? res;
+      final list = raw is List ? raw.cast<Map<String, dynamic>>() : <Map<String, dynamic>>[];
+      setState(() { _smms = list.map(UserOption.fromJson).toList(); _smmsLoading = false; });
+    } on NetworkException catch (_) {
+      setState(() { _smmsError = 'No internet connection'; _smmsLoading = false; });
+    } on UnauthorizedException catch (_) {
+      setState(() { _smmsError = 'Session expired'; _smmsLoading = false; });
+    } on AppException catch (e) {
+      setState(() { _smmsError = e.message; _smmsLoading = false; });
+    } catch (_) {
+      setState(() { _smmsError = 'Failed to load SMMs'; _smmsLoading = false; });
     }
   }
 
@@ -151,12 +177,23 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
 
   Future<void> _pickDate() async {
     final d = await showDatePicker(
+
       context: context,
       initialDate: DateTime.now().add(const Duration(days: 3)),
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 365)),
       builder: (ctx, child) => Theme(
-        data: Theme.of(ctx).copyWith(colorScheme: const ColorScheme.dark(primary: AppColors.smmColor, surface: AppColors.surface)),
+        data: Theme.of(ctx).copyWith(
+          colorScheme: const ColorScheme.dark(
+            primary: AppColors.adminColor,
+            surface: AppColors.surface,
+          ),
+          textButtonTheme: TextButtonThemeData(
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ),
         child: child!,
       ),
     );
@@ -166,7 +203,8 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
   String? _validate() {
     if (_selectedClient == null) return 'Please select a client.';
     if (_selectedDesigner == null) return 'Please select a designer.';
-    if (_titleCtrl.text.trim().isEmpty) return 'Please enter a project title.';
+    if (_selectedSmm == null) return 'Please select an SMM.';
+    if (_brandNameCtrl.text.trim().isEmpty) return 'Please enter a brand name.';
     if (_selectedDesignTypes.isEmpty) return 'Please select at least one design type.';
     if (_priority == null) return 'Please select a priority.';
     if (_deadline == null) return 'Please pick a deadline.';
@@ -195,22 +233,19 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
       final formData = FormData.fromMap({
         'clientId': _selectedClient!.id,
         'designerId': _selectedDesigner!.id,
-        'title': _titleCtrl.text.trim(),
+        'smmId': _selectedSmm!.id,
+        'title': _brandNameCtrl.text.trim(),
         'designType': _selectedDesignTypes.toList(),
         'deadline': _deadline!.toUtc().toIso8601String(),
         'priority': _priority!,
         'description': _descCtrl.text.trim(),
-        'targetAudience': _audienceCtrl.text.trim(),
-        'brandColors': _colorsCtrl.text.trim(),
-        'fontPreferences': _fontCtrl.text.trim(),
-        'revisionLimit': _revisions,
         if (_assets.isNotEmpty)
           'assets': await Future.wait(_assets.map((f) async => MultipartFile.fromFile(f.path, filename: f.name))),
       });
-      await _api.postMultipart(AppConstants.createDesignProject, formData: formData);
+      await _api.postMultipart(AppConstants.createAdminDesignProject, formData: formData);
       if (ctx.mounted) {
         Navigator.pop(ctx);
-        _showSnack('Design project created successfully! 🎨', AppColors.success, Icons.check_circle_rounded);
+        _showSnack('Task assigned successfully! 🎨', AppColors.success, Icons.check_circle_rounded);
       }
     } on ValidationException catch (e) {
       _showSnack(e.message, AppColors.warning, Icons.warning_amber_rounded);
@@ -258,7 +293,7 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
         decoration: BoxDecoration(color: AppColors.surfaceLight, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
         child: Row(children: [
           const SizedBox(width: 14),
-          const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.smmColor)),
+          const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.adminColor)),
           const SizedBox(width: 10),
           Text('Loading $label...', style: GoogleFonts.sora(fontSize: 13, color: AppColors.textMuted)),
         ]),
@@ -299,7 +334,7 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
       padding: const EdgeInsets.symmetric(horizontal: 14),
       decoration: BoxDecoration(
         color: AppColors.surfaceLight, borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: value != null ? AppColors.smmColor.withOpacity(0.6) : AppColors.border),
+        border: Border.all(color: value != null ? AppColors.adminColor.withOpacity(0.6) : AppColors.border),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<UserOption>(
@@ -324,7 +359,7 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
     padding: const EdgeInsets.symmetric(horizontal: 14),
     decoration: BoxDecoration(
       color: AppColors.surfaceLight, borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: val != null ? AppColors.smmColor.withOpacity(0.6) : AppColors.border),
+      border: Border.all(color: val != null ? AppColors.adminColor.withOpacity(0.6) : AppColors.border),
     ),
     child: DropdownButtonHideUnderline(
       child: DropdownButton<T>(
@@ -360,7 +395,7 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
                       ? Container(
                     color: AppColors.surface,
                     child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                      const Icon(Icons.videocam_rounded, color: AppColors.smmColor, size: 26),
+                      const Icon(Icons.videocam_rounded, color: AppColors.adminColor, size: 26),
                       const SizedBox(height: 4),
                       Text(f.name.length > 10 ? '${f.name.substring(0, 10)}…' : f.name, style: GoogleFonts.sora(fontSize: 9, color: AppColors.textMuted), textAlign: TextAlign.center),
                     ]),
@@ -373,7 +408,7 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                   decoration: BoxDecoration(
-                    color: isVid ? const Color(0xFF6C63FF).withOpacity(0.85) : AppColors.smmColor.withOpacity(0.85),
+                    color: isVid ? const Color(0xFF6C63FF).withOpacity(0.85) : AppColors.adminColor.withOpacity(0.85),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(isVid ? 'VID' : 'IMG', style: GoogleFonts.sora(fontSize: 8, fontWeight: FontWeight.w700, color: Colors.white)),
@@ -403,17 +438,17 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
           decoration: BoxDecoration(
             color: _assets.length >= 20 ? AppColors.surfaceLight.withOpacity(0.5) : AppColors.surfaceLight,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: _assets.isNotEmpty ? AppColors.smmColor.withOpacity(0.5) : AppColors.border),
+            border: Border.all(color: _assets.isNotEmpty ? AppColors.adminColor.withOpacity(0.5) : AppColors.border),
           ),
           child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             ShaderMask(
-              shaderCallback: (b) => AppColors.smmGradient.createShader(b),
+              shaderCallback: (b) => AppColors.adminGradient.createShader(b),
               child: Icon(_assets.isEmpty ? Icons.perm_media_rounded : Icons.add_photo_alternate_rounded, color: Colors.white, size: 20),
             ),
             const SizedBox(width: 8),
             Text(
               _assets.isEmpty ? 'Select Images & Videos' : 'Add More  (${_assets.length}/20)',
-              style: GoogleFonts.sora(fontSize: 13, fontWeight: FontWeight.w600, color: _assets.isNotEmpty ? AppColors.smmColor : AppColors.textSecondary),
+              style: GoogleFonts.sora(fontSize: 13, fontWeight: FontWeight.w600, color: _assets.isNotEmpty ? AppColors.adminColor : AppColors.textSecondary),
             ),
           ]),
         ),
@@ -445,10 +480,10 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             ShaderMask(
-              shaderCallback: (b) => AppColors.smmGradient.createShader(b),
-              child: Text('Assign to Designer', style: GoogleFonts.sora(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white)),
+              shaderCallback: (b) => AppColors.adminGradient.createShader(b),
+              child: Text('Assign a New Task', style: GoogleFonts.sora(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white)),
             ),
-            Text('Fill in details to assign to a designer', style: GoogleFonts.sora(fontSize: 11, color: AppColors.textSecondary)),
+            Text('Fill in details to assign the task', style: GoogleFonts.sora(fontSize: 11, color: AppColors.textSecondary)),
           ],
         ),
         bottom: const PreferredSize(
@@ -467,8 +502,12 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
           _apiDrop(label: 'Graphic Designer', loading: _designersLoading, error: _designersError, items: _designers, value: _selectedDesigner, onChange: (v) => setState(() => _selectedDesigner = v), onRetry: _fetchDesigners, emptyHint: 'No designers found'),
           const SizedBox(height: 16),
 
-          _lbl('Project Title'),
-          _inp(_titleCtrl, 'e.g. Summer Campaign Banner'),
+          _lbl('Assign SMM'),
+          _apiDrop(label: 'SMM', loading: _smmsLoading, error: _smmsError, items: _smms, value: _selectedSmm, onChange: (v) => setState(() => _selectedSmm = v), onRetry: _fetchSmms, emptyHint: 'No SMM found'),
+          const SizedBox(height: 16),
+
+          _lbl('Brand Name'),
+          _inp(_brandNameCtrl, 'e.g. Nike'),
           const SizedBox(height: 16),
 
           _lbl('Design Type  (select multiple)'),
@@ -481,9 +520,9 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
                 selected: selected,
                 onSelected: (v) => setState(() => v ? _selectedDesignTypes.add(t) : _selectedDesignTypes.remove(t)),
                 backgroundColor: AppColors.surfaceLight,
-                selectedColor: AppColors.smmColor,
+                selectedColor: AppColors.adminColor,
                 checkmarkColor: Colors.white,
-                side: BorderSide(color: selected ? AppColors.smmColor : AppColors.border),
+                side: BorderSide(color: selected ? AppColors.adminColor : AppColors.border),
               );
             }).toList(),
           ),
@@ -503,10 +542,10 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
                   decoration: BoxDecoration(
                     color: AppColors.surfaceLight, borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: _deadline != null ? AppColors.smmColor : AppColors.border),
+                    border: Border.all(color: _deadline != null ? AppColors.adminColor : AppColors.border),
                   ),
                   child: Row(children: [
-                    Icon(Icons.calendar_today_rounded, size: 14, color: _deadline != null ? AppColors.smmColor : AppColors.textMuted),
+                    Icon(Icons.calendar_today_rounded, size: 14, color: _deadline != null ? AppColors.adminColor : AppColors.textMuted),
                     const SizedBox(width: 6),
                     Text(
                       _deadline != null ? '${_deadline!.day}/${_deadline!.month}/${_deadline!.year}' : 'Pick date',
@@ -523,49 +562,6 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
           _inp(_descCtrl, 'Describe the project requirements...', lines: 4),
           const SizedBox(height: 16),
 
-          _lbl('Target Audience'),
-          _inp(_audienceCtrl, 'e.g. Women 18–35, fashion enthusiasts'),
-          const SizedBox(height: 16),
-
-          _lbl('Brand Colors'),
-          _inp(_colorsCtrl, 'e.g. #FF6B9D, #6C63FF'),
-          const SizedBox(height: 16),
-
-          _lbl('Font Preferences'),
-          _inp(_fontCtrl, 'e.g. Montserrat bold for headings'),
-          const SizedBox(height: 16),
-
-          _lbl('Revision Limit'),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(color: AppColors.surfaceLight, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
-            child: Row(children: [
-              Text('Revisions allowed:', style: GoogleFonts.sora(fontSize: 13, color: AppColors.textSecondary)),
-              const Spacer(),
-              GestureDetector(
-                onTap: () => setState(() => _revisions = (_revisions - 1).clamp(0, 10)),
-                child: Container(
-                  width: 32, height: 32,
-                  decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(8), border: Border.all(color: AppColors.border)),
-                  child: const Icon(Icons.remove_rounded, size: 16, color: AppColors.textSecondary),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                child: Text('$_revisions', style: GoogleFonts.sora(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.smmColor)),
-              ),
-              GestureDetector(
-                onTap: () => setState(() => _revisions = (_revisions + 1).clamp(0, 10)),
-                child: Container(
-                  width: 32, height: 32,
-                  decoration: BoxDecoration(gradient: AppColors.smmGradient, borderRadius: BorderRadius.circular(8)),
-                  child: const Icon(Icons.add_rounded, size: 16, color: Colors.white),
-                ),
-              ),
-            ]),
-          ),
-          const SizedBox(height: 16),
-
           _buildAssetsSection(),
           const SizedBox(height: 28),
 
@@ -576,10 +572,10 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
               duration: const Duration(milliseconds: 200),
               padding: const EdgeInsets.symmetric(vertical: 16),
               decoration: BoxDecoration(
-                gradient: _isSubmitting ? null : AppColors.smmGradient,
+                gradient: _isSubmitting ? null : AppColors.adminGradient,
                 color: _isSubmitting ? AppColors.surfaceLight : null,
                 borderRadius: BorderRadius.circular(14),
-                boxShadow: _isSubmitting ? [] : [BoxShadow(color: AppColors.smmColor.withOpacity(0.4), blurRadius: 16, offset: const Offset(0, 6))],
+                boxShadow: _isSubmitting ? [] : [BoxShadow(color: AppColors.adminColor.withOpacity(0.4), blurRadius: 16, offset: const Offset(0, 6))],
               ),
               alignment: Alignment.center,
               child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -589,7 +585,7 @@ class _AssignTaskPageState extends State<AssignTaskPage> {
                   const Icon(Icons.assignment_turned_in_rounded, color: Colors.white, size: 18),
                 const SizedBox(width: 8),
                 Text(
-                  _isSubmitting ? 'Creating Project…' : 'Create Design Project',
+                  _isSubmitting ? 'Assigning Task…' : 'Assign Task',
                   style: GoogleFonts.sora(fontSize: 15, fontWeight: FontWeight.w700, color: _isSubmitting ? AppColors.textMuted : Colors.white),
                 ),
               ]),

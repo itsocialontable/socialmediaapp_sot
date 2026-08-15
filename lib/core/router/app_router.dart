@@ -18,6 +18,8 @@ import '../../features/dashboard/smm/sheets/create_post_page.dart';
 import '../../features/dashboard/smm/sheets/posts_tab_page.dart';
 import '../../features/dashboard/smm/sheets/connected_accounts_page.dart';
 import '../../features/dashboard/smm/sheets/assign_task_page.dart';
+import '../../features/dashboard/smm/pages/smm_design_projects_page.dart';
+import '../../features/dashboard/smm/pages/smm_add_client_page.dart';
 import '../../shared/pages/notifications_page.dart';
 import '../theme/app_theme.dart';
 
@@ -46,6 +48,8 @@ class AppRouter {
         GoRoute(path: '/dashboard/smm', builder: (_, __) => const SmmDashboardScreen()),
         GoRoute(path: '/smm/connected-accounts', builder: (_, __) => const ConnectedAccountsPage()),
         GoRoute(path: '/smm/assign-task', builder: (_, __) => const AssignTaskPage()),
+        GoRoute(path: '/smm/design-projects', builder: (_, __) => const SmmDesignProjectsListPage()),
+        GoRoute(path: '/smm/add-client', builder: (_, __) => const SmmAddClientPage()),
         GoRoute(
           path: '/smm/posts',
           builder: (_, state) {

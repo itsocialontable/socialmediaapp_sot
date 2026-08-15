@@ -41,6 +41,26 @@ class _EditProfilePageState extends State<EditProfilePage> {
   // Local picked file — sirf preview ke liye jab tak upload pending hai
   File? _pickedImage;
 
+  // ─── Role-based API prefix ─────────────────────────────
+  // Admin  -> /api/admin/profile(...)
+  // SMM    -> /api/smm/profile(...)
+  // Client -> /api/client/profile(...)
+  // GD     -> /api/gd/profile(...)
+  String get _profileBasePath {
+    final role = context.read<AuthProvider>().userRole;
+    switch (role) {
+      case UserRole.smm:
+        return '/api/smm/profile';
+      case UserRole.client:
+        return '/api/client/profile';
+      case UserRole.graphicDesigner:
+        return '/api/gd/profile';
+      case UserRole.admin:
+      default:
+        return '/api/admin/profile';
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -73,7 +93,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
       if (_phoneCtrl.text.trim().isNotEmpty) body['phone'] = _phoneCtrl.text.trim();
       if (_bioCtrl.text.trim().isNotEmpty) body['bio'] = _bioCtrl.text.trim();
 
-      await _apiService.put('/api/admin/profile', body: body);
+      await _apiService.put(_profileBasePath, body: body);
 
       if (mounted) {
         await context.read<AuthProvider>().updateUserInfo(
@@ -117,7 +137,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
       });
 
       final res = await _apiService.postMultipart(
-        '/api/admin/profile/image',
+        '$_profileBasePath/image',
         formData: formData,
       );
 
@@ -161,7 +181,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
     setState(() => _imageDeleteState = ApiResponse.loading());
 
     try {
-      await _apiService.delete('/api/admin/profile/image');
+      await _apiService.delete('$_profileBasePath/image');
 
       if (mounted) {
         // Provider clear karo — dono pages update ho jayenge

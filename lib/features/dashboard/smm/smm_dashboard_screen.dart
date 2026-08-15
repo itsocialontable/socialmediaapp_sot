@@ -135,6 +135,14 @@ class _SmmDashboardScreenState extends State<SmmDashboardScreen> {
     context.push('/smm/assign-task');
   });
 
+  void _openDesignProjects() => _closeDrawerThen(() {
+    context.push('/smm/design-projects');
+  });
+
+  void _openAddClient() => _closeDrawerThen(() {
+    context.push('/smm/add-client');
+  });
+
   void _openPostsPage({int initialTab = 0}) => _closeDrawerThen(() {
     context.push('/smm/posts', extra: initialTab);
   });
@@ -153,6 +161,8 @@ class _SmmDashboardScreenState extends State<SmmDashboardScreen> {
         draftCount: posts.drafts.length,
         onConnectedAccounts: _openConnectedAccounts,
         onAssignTask: _openAssignTask,
+        onDesignProjects: _openDesignProjects,
+        onAddClient: _openAddClient,
         onPosts: _openPostsPage,
       ),
 
@@ -412,6 +422,8 @@ class _SideDrawer extends StatelessWidget {
   final int draftCount;
   final VoidCallback onConnectedAccounts;
   final VoidCallback onAssignTask;
+  final VoidCallback onDesignProjects;
+  final VoidCallback onAddClient;
   final void Function({int initialTab}) onPosts;
 
   const _SideDrawer({
@@ -419,6 +431,8 @@ class _SideDrawer extends StatelessWidget {
     required this.draftCount,
     required this.onConnectedAccounts,
     required this.onAssignTask,
+    required this.onDesignProjects,
+    required this.onAddClient,
     required this.onPosts,
   });
 
@@ -496,7 +510,29 @@ class _SideDrawer extends StatelessWidget {
                   ),
                   const SizedBox(height: 10),
 
-                  // 3. Posts (Queue + Drafts merged)
+                  // 3. Design Projects (list · view · edit · delete)
+                  _DrawerMenuItem(
+                    icon: Icons.design_services_rounded,
+                    label: 'Design Projects',
+                    subtitle: 'view · edit · delete',
+                    gradient: const LinearGradient(
+                        colors: [Color(0xFFFF9A3C), Color(0xFFFF6B6B)]),
+                    onTap: onDesignProjects,
+                  ),
+                  const SizedBox(height: 10),
+
+                  // 4. Add Client
+                  _DrawerMenuItem(
+                    icon: Icons.person_add_rounded,
+                    label: 'Add Client',
+                    subtitle: 'onboard a new client',
+                    gradient: const LinearGradient(
+                        colors: [Color(0xFF00C6AE), Color(0xFF00A8CC)]),
+                    onTap: onAddClient,
+                  ),
+                  const SizedBox(height: 10),
+
+                  // 5. Posts (Queue + Drafts merged)
                   _DrawerMenuItem(
                     icon: Icons.dynamic_feed_rounded,
                     label: 'Posts',

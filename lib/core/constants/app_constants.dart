@@ -2,8 +2,8 @@
 
 class AppConstants {
   // Base URL
-  // static const String baseUrl = 'https://smm-backend1-stkn.onrender.com';
-  static const String baseUrl = "https://gc360smm.duckdns.org";
+  //static const String baseUrl = 'https://eradicate-switch-catfight.ngrok-free.dev';
+   static const String baseUrl = "https://gc360smm.duckdns.org";
 
   // ── Admin ──────────────────────────────────────────────────────────────
   static const String adminDashboard = '/api/admin/dashboard';
@@ -20,6 +20,17 @@ class AppConstants {
   static const String adminGraphicDesigners = '/api/admin/users/graphic-designers';
   static const String adminDeleteUser       = '/api/admin/users'; // DELETE /api/admin/users/:id
   static const String adminUserDetail       = '/api/admin/users'; // GET /api/admin/users/:id
+
+  // ── Admin Invoices ─────────────────────────────────────────────────────
+  /// POST /api/admin/invoices  → body: { "clientId": "...", "items": [{ "rate": "..." }] }
+  /// → generates invoice. "rate" is the client's Budget (INR) entered on
+  /// the Add Client sheet.
+  /// Usage: AppConstants.adminInvoices
+  static const String adminInvoices         = '/api/admin/invoices';
+
+  /// GET /api/admin/invoices/client/:clientId → all invoices for a client
+  /// Usage: '${AppConstants.adminInvoicesByClient}/$clientId'
+  static const String adminInvoicesByClient = '/api/admin/invoices/client';
 
   // ── SMM ────────────────────────────────────────────────────────────────
   static const String smmDashboard        = '/api/smm/dashboard';

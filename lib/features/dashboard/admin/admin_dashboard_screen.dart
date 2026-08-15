@@ -12,7 +12,7 @@ import '../../../shared/pages/profile_page.dart';
 import '../../../shared/pages/messages_page.dart';
 import '../../../shared/pages/analytics_page.dart';
 import 'pages/admin_inner_pages.dart';
-import 'pages/admin_assign_task_page.dart';
+import 'pages/admin_assign_task_new_page.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -283,7 +283,7 @@ class _AdminHomeState extends State<_AdminHome> {
           GestureDetector(
             onTap: () => Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const AdminAssignTaskPage()),
+              MaterialPageRoute(builder: (_) => const AdminAssignTaskNewPage()),
             ),
             child: Container(
               padding: const EdgeInsets.all(16),

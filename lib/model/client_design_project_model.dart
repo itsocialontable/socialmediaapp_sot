@@ -108,10 +108,17 @@ class ClientDesignProject {
       }
     }
 
+    // designType may come back as a single String or a List<String>
+    // (design type is now multi-select on assign-task screens).
+    final rawType = json['designType'];
+    final designTypeStr = rawType is List
+        ? rawType.map((e) => e.toString()).join(', ')
+        : (rawType as String? ?? '');
+
     return ClientDesignProject(
       id: json['_id'] as String? ?? '',
       title: json['title'] as String? ?? '',
-      designType: json['designType'] as String? ?? '',
+      designType: designTypeStr,
       priority: json['priority'] as String? ?? 'medium',
       status: json['status'] as String? ?? '',
       description: json['description'] as String? ?? '',
@@ -132,13 +139,13 @@ class ClientDesignProject {
   // Convenience helpers
   bool get isPendingReview =>
       status.toLowerCase() == 'review' ||
-      status.toLowerCase() == 'pending review';
+          status.toLowerCase() == 'pending review';
 
   bool get isApproved => status.toLowerCase() == 'approved';
 
   bool get isInProgress =>
       status.toLowerCase() == 'in progress' ||
-      status.toLowerCase() == 'inprogress';
+          status.toLowerCase() == 'inprogress';
 
   bool get isCompleted => status.toLowerCase() == 'completed';
 
@@ -180,7 +187,7 @@ class ClientDesignProjectReviewRequest {
   });
 
   Map<String, dynamic> toJson() => {
-        'action': action,
-        'feedback': feedback,
-      };
+    'action': action,
+    'feedback': feedback,
+  };
 }

@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:smm_app/shared/widgets/update_dialog.dart';
+import 'package:smm_app/shared/widgets/double_back_to_exit_wrapper.dart';
 import 'core/providers/auth_provider.dart';
 import 'core/providers/client_calendar_provider.dart';
 import 'core/providers/client_design_project_provider.dart';
 import 'core/providers/gd_project_provider.dart';
 import 'core/providers/social_provider.dart';
+import 'core/providers/smm_design_project_provider.dart';
 import 'core/router/app_router.dart';
 import 'core/services/oauth_deep_link_service.dart';
 import 'core/services/update_service.dart';
@@ -85,6 +87,7 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => SocialProvider()),
         ChangeNotifierProvider(create: (_) => ClientDesignProjectProvider()),
         ChangeNotifierProvider(create: (_) => ClientCalendarProvider()),
+        ChangeNotifierProvider(create: (_) => SmmDesignProjectProvider()),
       ],
       child: Builder(
         builder: (context) {
@@ -95,6 +98,14 @@ class MyApp extends StatelessWidget {
             debugShowCheckedModeBanner: false,
             theme: AppTheme.darkTheme,
             routerConfig: router,
+            builder: (context, child) {
+              if (child == null) return const SizedBox.shrink();
+              return DoubleBackToExitWrapper(
+                scaffoldMessengerKey: rootScaffoldMessengerKey,
+                router: router,
+                child: child,
+              );
+            },
           );
         },
       ),

@@ -47,12 +47,19 @@ class GdProject {
   });
 
   factory GdProject.fromJson(Map<String, dynamic> json) {
+    // designType may come back as a single String or a List<String>
+    // (design type is now multi-select on assign-task screens).
+    final rawType = json['designType'];
+    final designTypeStr = rawType is List
+        ? rawType.map((e) => e.toString()).join(', ')
+        : (rawType as String? ?? '');
+
     return GdProject(
       id: json['_id'] as String? ?? '',
       client: GdProjectClient.fromJson(
           json['client'] as Map<String, dynamic>? ?? {}),
       title: json['title'] as String? ?? '',
-      designType: json['designType'] as String? ?? '',
+      designType: designTypeStr,
       priority: json['priority'] as String? ?? '',
       deadline: json['deadline'] != null
           ? DateTime.tryParse(json['deadline'] as String)

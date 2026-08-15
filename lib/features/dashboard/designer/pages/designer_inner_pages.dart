@@ -554,67 +554,186 @@ class _ErrorBanner extends StatelessWidget {
 class _ProjectDropdown extends StatelessWidget {
   final GdProjectProvider prov;
   final bool enabled;
-  const _ProjectDropdown({required this.prov, required this.enabled});
+
+  const _ProjectDropdown({
+    required this.prov,
+    required this.enabled,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final projects = prov.allProjects;
+    // Remove duplicate projects
+    final Map<String, GdProject> uniqueMap = {};
 
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text('Select Project', style: GoogleFonts.sora(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
-      const SizedBox(height: 8),
-      Container(
-        height: 52,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        decoration: BoxDecoration(
-          color: enabled ? AppColors.surfaceLight : AppColors.surfaceLight.withOpacity(0.5),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: prov.selectedProject != null
-                ? AppColors.designerColor.withOpacity(0.5)
-                : AppColors.border,
+    for (final project in prov.allProjects) {
+      uniqueMap[project.id.toString()] = project;
+    }
+
+    final projects = uniqueMap.values.toList();
+
+    // Selected project ID
+    final selectedId = prov.selectedProject?.id.toString();
+
+    // Make sure selected ID exists in dropdown items
+    final validSelectedId = projects.any(
+          (project) => project.id.toString() == selectedId,
+    )
+        ? selectedId
+        : null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Select Project',
+          style: GoogleFonts.sora(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textSecondary,
           ),
         ),
-        child: projects.isEmpty
-            ? Row(children: [
-          const Icon(Icons.folder_off_outlined, color: AppColors.textMuted, size: 18),
-          const SizedBox(width: 10),
-          Text('No projects available', style: GoogleFonts.sora(fontSize: 13, color: AppColors.textMuted)),
-        ])
-            : DropdownButtonHideUnderline(
-          child: DropdownButton<GdProject>(
-            value: prov.selectedProject,
-            hint: Row(children: [
-              const Icon(Icons.folder_outlined, color: AppColors.textMuted, size: 18),
+
+        const SizedBox(height: 8),
+
+        Container(
+          height: 52,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: enabled
+                ? AppColors.surfaceLight
+                : AppColors.surfaceLight.withOpacity(0.5),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: validSelectedId != null
+                  ? AppColors.designerColor.withOpacity(0.5)
+                  : AppColors.border,
+            ),
+          ),
+
+          child: projects.isEmpty
+              ? Row(
+            children: [
+              const Icon(
+                Icons.folder_off_outlined,
+                color: AppColors.textMuted,
+                size: 18,
+              ),
               const SizedBox(width: 10),
-              Text('Select a project…', style: GoogleFonts.sora(fontSize: 13, color: AppColors.textMuted)),
-            ]),
-            isExpanded: true,
-            icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.textMuted),
-            dropdownColor: AppColors.surface,
-            style: GoogleFonts.sora(fontSize: 13, color: AppColors.textPrimary),
-            onChanged: enabled ? (val) => prov.selectProject(val) : null,
-            items: projects.map((p) {
-              return DropdownMenuItem<GdProject>(
-                value: p,
-                child: Row(children: [
-                  Container(
-                    width: 28, height: 28,
-                    decoration: BoxDecoration(gradient: AppColors.designerGradient, borderRadius: BorderRadius.circular(6)),
-                    child: const Icon(Icons.folder_rounded, color: Colors.white, size: 14),
+              Text(
+                'No projects available',
+                style: GoogleFonts.sora(
+                  fontSize: 13,
+                  color: AppColors.textMuted,
+                ),
+              ),
+            ],
+          )
+              : DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: validSelectedId,
+
+              hint: Row(
+                children: [
+                  const Icon(
+                    Icons.folder_outlined,
+                    color: AppColors.textMuted,
+                    size: 18,
                   ),
                   const SizedBox(width: 10),
-                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
-                    Text(p.title, style: GoogleFonts.sora(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary), overflow: TextOverflow.ellipsis),
-                    Text(p.client.companyName, style: GoogleFonts.sora(fontSize: 10, color: AppColors.textSecondary)),
-                  ])),
-                ]),
-              );
-            }).toList(),
+                  Text(
+                    'Select a project…',
+                    style: GoogleFonts.sora(
+                      fontSize: 13,
+                      color: AppColors.textMuted,
+                    ),
+                  ),
+                ],
+              ),
+
+              isExpanded: true,
+
+              icon: const Icon(
+                Icons.keyboard_arrow_down_rounded,
+                color: AppColors.textMuted,
+              ),
+
+              dropdownColor: AppColors.surface,
+
+              style: GoogleFonts.sora(
+                fontSize: 13,
+                color: AppColors.textPrimary,
+              ),
+
+              onChanged: enabled
+                  ? (String? projectId) {
+                if (projectId == null) return;
+
+                final project = projects.firstWhere(
+                      (p) => p.id.toString() == projectId,
+                );
+
+                prov.selectProject(project);
+              }
+                  : null,
+
+              items: projects.map((project) {
+                return DropdownMenuItem<String>(
+                  value: project.id.toString(),
+
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 28,
+                        height: 28,
+                        decoration: BoxDecoration(
+                          gradient: AppColors.designerGradient,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Icon(
+                          Icons.folder_rounded,
+                          color: Colors.white,
+                          size: 14,
+                        ),
+                      ),
+
+                      const SizedBox(width: 10),
+
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment:
+                          CrossAxisAlignment.start,
+                          mainAxisAlignment:
+                          MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              project.title,
+                              style: GoogleFonts.sora(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.textPrimary,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+
+                            Text(
+                              project.client.companyName,
+                              style: GoogleFonts.sora(
+                                fontSize: 10,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
           ),
         ),
-      ),
-    ]);
+      ],
+    );
   }
 }
 

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show Clipboard, ClipboardData;
+import 'package:flutter/services.dart' show Clipboard, ClipboardData, FilteringTextInputFormatter, TextInputFormatter, LengthLimitingTextInputFormatter;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:open_filex/open_filex.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/network/api_service.dart';
@@ -337,17 +339,67 @@ class _AddClientSheetState extends State<_AddClientSheet> {
         'industry': _industryCtrl.text.trim(),
         'platforms': _selectedPlatforms.toList(),
       });
-      final msg = (res['msg'] ?? res['message'] ?? 'Client created successfully').toString();
+
+      // Try to pull the newly created client's id out of the response so we
+      // can immediately check/generate their invoice via
+      // GET /api/admin/invoices/:clientId
+      final clientId = _extractClientId(res);
+      final clientName = _nameCtrl.text.trim();
+
       if (mounted) {
-        Navigator.pop(context);
-        widget.onCreated();
-        _showSuccessSnack(context, msg);
+        Navigator.pop(context); // close the "Add Client" sheet
+        widget.onCreated();     // refresh the clients list behind it
+
+        if (clientId != null && clientId.isNotEmpty) {
+          // Show a small progress dialog that fetches/generates the invoice
+          // for the client we just created, then reports success in the UI.
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (_) => _ClientInvoiceStatusDialog(
+              clientId: clientId,
+              clientName: clientName,
+              budget: _budgetCtrl.text.trim(),
+            ),
+          );
+        } else {
+          // Fallback: couldn't resolve a client id from the create response,
+          // just show the normal success toast.
+          final msg = (res['msg'] ?? res['message'] ?? 'Client created successfully').toString();
+          _showSuccessSnack(context, msg);
+        }
       }
     } catch (e) {
       setState(() { _errorMessage = _cleanErr(e.toString()); });
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  /// Best-effort extraction of the created client's id from various possible
+  /// response shapes returned by POST /api/user/create.
+  String? _extractClientId(Map<String, dynamic> res) {
+    dynamic pick(Map<String, dynamic> m) => m['_id'] ?? m['id'] ?? m['userId'] ?? m['clientId'];
+
+    final data = res['data'];
+    if (data is Map<String, dynamic>) {
+      final user = data['user'] ?? data['client'];
+      if (user is Map<String, dynamic>) {
+        final id = pick(user);
+        if (id != null) return id.toString();
+      }
+      final id = pick(data);
+      if (id != null) return id.toString();
+    }
+
+    final user = res['user'] ?? res['client'];
+    if (user is Map<String, dynamic>) {
+      final id = pick(user);
+      if (id != null) return id.toString();
+    }
+
+    final id = pick(res);
+    return id?.toString();
   }
 
   @override
@@ -398,13 +450,13 @@ class _AddClientSheetState extends State<_AddClientSheet> {
                   const SizedBox(height: 14),
                   _SheetPasswordField(controller: _passwordCtrl, obscure: _obscurePassword, onToggle: () => setState(() => _obscurePassword = !_obscurePassword), validator: (v) { if (v == null || v.trim().isEmpty) return 'Password is required'; if (v.length < 6) return 'Minimum 6 characters'; return null; }),
                   const SizedBox(height: 14),
-                  _SheetField(label: 'Phone Number', hint: 'e.g. +1 234 567 890', icon: Icons.phone_rounded, controller: _phoneCtrl, keyboardType: TextInputType.phone),
+                  _SheetField(label: 'Phone Number', hint: 'e.g. 9876543210', icon: Icons.phone_rounded, controller: _phoneCtrl, keyboardType: TextInputType.phone, inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(10)], maxLength: 10, validator: (v) => (v != null && v.trim().isNotEmpty && v.trim().length != 10) ? 'Enter a valid 10-digit number' : null),
                   const SizedBox(height: 14),
                   _SheetField(label: 'Company Name *', hint: 'e.g. Fashion Brand Co.', icon: Icons.business_rounded, controller: _companyCtrl, validator: (v) => (v == null || v.trim().isEmpty) ? 'Company name is required' : null),
                   const SizedBox(height: 14),
                   _SheetField(label: 'Industry', hint: 'e.g. Fashion & Lifestyle', icon: Icons.category_rounded, controller: _industryCtrl),
                   const SizedBox(height: 14),
-                  _SheetField(label: 'Monthly Budget (USD)', hint: 'e.g. 2500', icon: Icons.attach_money_rounded, controller: _budgetCtrl, keyboardType: TextInputType.number),
+                  _SheetField(label: 'Budget (INR) *', hint: 'e.g. 2500', icon: Icons.currency_rupee_rounded, controller: _budgetCtrl, keyboardType: TextInputType.number, validator: (v) { if (v == null || v.trim().isEmpty) return 'Budget is required'; if (double.tryParse(v.trim()) == null) return 'Enter a valid amount'; return null; }),
                   const SizedBox(height: 14),
                   _SheetField(label: 'Address / Location', hint: 'e.g. New York, USA', icon: Icons.location_on_rounded, controller: _addressCtrl),
                   const SizedBox(height: 14),
@@ -575,13 +627,13 @@ class _EditClientSheetState extends State<_EditClientSheet> {
                   const SizedBox(height: 14),
                   _SheetField(label: 'Email Address *', hint: 'e.g. alex@email.com', icon: Icons.email_rounded, controller: _emailCtrl, keyboardType: TextInputType.emailAddress, validator: (v) { if (v == null || v.trim().isEmpty) return 'Email is required'; if (!v.contains('@')) return 'Enter a valid email'; return null; }),
                   const SizedBox(height: 14),
-                  _SheetField(label: 'Phone Number', hint: 'e.g. +1 234 567 890', icon: Icons.phone_rounded, controller: _phoneCtrl, keyboardType: TextInputType.phone),
+                  _SheetField(label: 'Phone Number', hint: 'e.g. 9876543210', icon: Icons.phone_rounded, controller: _phoneCtrl, keyboardType: TextInputType.phone, inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(10)], maxLength: 10, validator: (v) => (v != null && v.trim().isNotEmpty && v.trim().length != 10) ? 'Enter a valid 10-digit number' : null),
                   const SizedBox(height: 14),
                   _SheetField(label: 'Company Name *', hint: 'e.g. Fashion Brand Co.', icon: Icons.business_rounded, controller: _companyCtrl, validator: (v) => (v == null || v.trim().isEmpty) ? 'Company name is required' : null),
                   const SizedBox(height: 14),
                   _SheetField(label: 'Industry', hint: 'e.g. Fashion & Lifestyle', icon: Icons.category_rounded, controller: _industryCtrl),
                   const SizedBox(height: 14),
-                  _SheetField(label: 'Monthly Budget (USD)', hint: 'e.g. 2500', icon: Icons.attach_money_rounded, controller: _budgetCtrl, keyboardType: TextInputType.number),
+                  _SheetField(label: 'Monthly Budget (INR)', hint: 'e.g. 2500', icon: Icons.attach_money_rounded, controller: _budgetCtrl, keyboardType: TextInputType.number),
                   const SizedBox(height: 14),
                   _SheetField(label: 'Address / Location', hint: 'e.g. New York, USA', icon: Icons.location_on_rounded, controller: _addressCtrl),
                   const SizedBox(height: 14),
@@ -1030,7 +1082,7 @@ class _AddMemberSheetState extends State<_AddMemberSheet> {
                   const SizedBox(height: 14),
                   _SheetPasswordField(controller: _passwordCtrl, obscure: _obscurePassword, onToggle: () => setState(() => _obscurePassword = !_obscurePassword), validator: (v) { if (v == null || v.trim().isEmpty) return 'Password is required'; if (v.length < 6) return 'Minimum 6 characters'; return null; }),
                   const SizedBox(height: 14),
-                  _SheetField(label: 'Phone Number *', hint: 'e.g. +1 234 567 890', icon: Icons.phone_rounded, controller: _phoneCtrl, keyboardType: TextInputType.phone, validator: (v) => (v == null || v.trim().isEmpty) ? 'Phone is required' : null),
+                  _SheetField(label: 'Phone Number *', hint: 'e.g. 9876543210', icon: Icons.phone_rounded, controller: _phoneCtrl, keyboardType: TextInputType.phone, inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(10)], maxLength: 10, validator: (v) { if (v == null || v.trim().isEmpty) return 'Phone is required'; if (v.trim().length != 10) return 'Enter a valid 10-digit number'; return null; }),
                   const SizedBox(height: 14),
                   _SheetDropdown(label: 'Role *', icon: Icons.work_rounded, value: _selectedRole, items: _roles.keys.toList(), displayLabels: _roles, onChanged: (v) => setState(() => _selectedRole = v!)),
                   const SizedBox(height: 14),
@@ -1214,7 +1266,7 @@ class _EditMemberSheetState extends State<_EditMemberSheet> {
                   const SizedBox(height: 14),
                   _SheetField(label: 'Email Address *', hint: 'e.g. john@agency.com', icon: Icons.email_rounded, controller: _emailCtrl, keyboardType: TextInputType.emailAddress, validator: (v) { if (v == null || v.trim().isEmpty) return 'Email is required'; if (!v.contains('@')) return 'Enter a valid email'; return null; }),
                   const SizedBox(height: 14),
-                  _SheetField(label: 'Phone Number', hint: 'e.g. +1 234 567 890', icon: Icons.phone_rounded, controller: _phoneCtrl, keyboardType: TextInputType.phone),
+                  _SheetField(label: 'Phone Number', hint: 'e.g. 9876543210', icon: Icons.phone_rounded, controller: _phoneCtrl, keyboardType: TextInputType.phone, inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(10)], maxLength: 10, validator: (v) => (v != null && v.trim().isNotEmpty && v.trim().length != 10) ? 'Enter a valid 10-digit number' : null),
                   const SizedBox(height: 14),
                   if (['SMM', 'Graphic Designer', 'SEO Specialist', 'Video Editor', 'Content Writer'].contains(widget.user.role)) ...[
                     _SheetField(label: 'Specialization', hint: _specializationHint(widget.user.role), icon: Icons.star_rounded, controller: _specializationCtrl),
@@ -1416,6 +1468,383 @@ class AdminReportsPage extends StatelessWidget {
           const SizedBox(height: 32),
         ],
       ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────
+// ─────────────────────────────────────────
+// SHARED INVOICE HELPERS
+// Used by both the "client created" dialog below and the invoices section
+// on the client detail page (AdminUserDetailPage), so parsing + downloading
+// behave identically everywhere invoices are shown.
+// ─────────────────────────────────────────
+List<Map<String, dynamic>> parseInvoiceList(Map<String, dynamic> res) {
+  dynamic node = res['data'] ?? res['invoices'] ?? res;
+  if (node is Map<String, dynamic> && node['invoices'] != null) node = node['invoices'];
+  if (node is! List) {
+    // Backend returned a single invoice object instead of a list.
+    if (node is Map<String, dynamic>) node = [node];
+    else node = [];
+  }
+  return node.whereType<Map<String, dynamic>>().toList();
+}
+
+String? invoiceField(Map<String, dynamic> node, List<String> keys) {
+  for (final k in keys) {
+    final v = node[k];
+    if (v != null && v.toString().trim().isNotEmpty) return v.toString();
+  }
+  return null;
+}
+
+String? invoiceFileUrl(Map<String, dynamic> node) {
+  final rawUrl = invoiceField(node, [
+    'pdfUrl', 'invoiceUrl', 'fileUrl', 'downloadUrl', 'receiptUrl', 'url',
+    'invoicePdf', 'invoicePath', 'filePath', 'path', 'attachment', 'file', 'link',
+  ]);
+  if (rawUrl == null) {
+    // Nothing matched our known key names — dump the raw keys so it's easy
+    // to spot the actual field name the backend used and add it above.
+    debugPrint('[invoice] no file-url field found on invoice node. keys=${node.keys.toList()}');
+    return null;
+  }
+  return rawUrl.startsWith('http')
+      ? rawUrl
+      : '${AppConstants.baseUrl}${rawUrl.startsWith('/') ? '' : '/'}$rawUrl';
+}
+
+/// Downloads the invoice PDF and opens it locally. Returns an error message
+/// on failure, or null on success.
+///
+/// This intentionally does NOT fall back to url_launcher / an external
+/// browser tab. Two things break that approach on this backend:
+///  1. The API base URL is a free ngrok tunnel, and free tunnels show an
+///     interstitial "You are about to visit..." warning page to any request
+///     that doesn't send the `ngrok-skip-browser-warning` header. Our Dio
+///     client sends that header (see DioClient), but a plain browser tab
+///     does not — so the "download" just opens a warning page instead of
+///     the PDF.
+///  2. The invoice endpoint likely requires the admin's auth token too,
+///     which an external browser tab also won't have.
+/// So the download always goes through ApiService's Dio instance (which
+/// attaches the auth token + ngrok header) and the file is saved + opened
+/// purely with Flutter packages: path_provider (find a writable app
+/// directory) + open_filex (open the saved PDF). If that fails, we surface
+/// the error instead of silently opening an external link.
+Future<String?> downloadInvoicePdf({required String url, required String invoiceId}) async {
+  try {
+    final dir = await getApplicationDocumentsDirectory();
+    final safeId = invoiceId.replaceAll(RegExp(r'[^\w\-]'), '_');
+    final savePath = '${dir.path}/invoice_$safeId.pdf';
+
+    await ApiService.rawDio.download(url, savePath);
+
+    final result = await OpenFilex.open(savePath);
+    if (result.type != ResultType.done) {
+      return 'Downloaded, but could not open the file (${result.message}).';
+    }
+    return null;
+  } catch (e) {
+    return 'Could not download the invoice. Please try again.';
+  }
+}
+
+// CLIENT CREATED → INVOICE STATUS DIALOG
+// Shown right after a client is created.
+// 1) POST /api/admin/invoices   body: { clientId, items: [{ rate }] }
+//    → generates the invoice. `rate` = the Budget (INR) entered on the
+//    Add Client sheet, forwarded through as the invoice line item's rate.
+// 2) GET  /api/admin/invoices/client/:clientId     → fetches all invoices
+//    for this client and renders them as a list right below, in this dialog.
+// ─────────────────────────────────────────
+class _ClientInvoiceStatusDialog extends StatefulWidget {
+  final String clientId;
+  final String clientName;
+  // Budget entered on the "Add Client" sheet — sent to the invoice-generate
+  // API as the rate of the (single) invoice line item.
+  final String? budget;
+  const _ClientInvoiceStatusDialog({required this.clientId, required this.clientName, this.budget});
+
+  @override
+  State<_ClientInvoiceStatusDialog> createState() => _ClientInvoiceStatusDialogState();
+}
+
+class _ClientInvoiceStatusDialogState extends State<_ClientInvoiceStatusDialog> {
+  final _apiService = ApiService();
+
+  bool _isLoadingInvoice = true;
+  bool _invoiceFailed = false;
+  String? _errorMessage;
+
+  // List of invoices for this client (GET /api/admin/invoices/client/:clientId)
+  List<Map<String, dynamic>> _invoices = [];
+  bool _isOpeningDownload = false;
+  String? _downloadingInvoiceId;
+
+  @override
+  void initState() {
+    super.initState();
+    _generateAndFetchInvoices();
+  }
+
+  // Step A: POST /api/admin/invoices
+  // body: { clientId, items: [{ rate }] } → generate invoice
+  // The "rate" is the Budget (INR) value entered on the Add Client sheet —
+  // that's what goes into the invoice's single line item as its rate.
+  Future<void> _generateInvoice() async {
+    await _apiService.post(AppConstants.adminInvoices, body: {
+      'clientId': widget.clientId,
+      'items': [
+        {
+          'rate': widget.budget ?? '',
+        },
+      ],
+    });
+  }
+
+  // Step B: GET /api/admin/invoices/client/:clientId → list all invoices
+  Future<void> _fetchInvoiceList() async {
+    final res = await _apiService.get('${AppConstants.adminInvoicesByClient}/${widget.clientId}');
+    _parseInvoiceList(res);
+  }
+
+  Future<void> _generateAndFetchInvoices() async {
+    try {
+      await _generateInvoice();
+    } catch (e) {
+      // Generation failing shouldn't block showing already-existing invoices,
+      // so we swallow it here and let the list fetch decide the final state.
+    }
+    try {
+      await _fetchInvoiceList();
+      if (mounted) setState(() => _isLoadingInvoice = false);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingInvoice = false;
+          _invoiceFailed = true;
+          _errorMessage = _cleanErr(e.toString());
+        });
+      }
+    }
+  }
+
+  void _parseInvoiceList(Map<String, dynamic> res) {
+    _invoices = parseInvoiceList(res);
+  }
+
+  String? _invoiceField(Map<String, dynamic> node, List<String> keys) => invoiceField(node, keys);
+
+  String? _invoiceFileUrl(Map<String, dynamic> node) => invoiceFileUrl(node);
+
+  Future<void> _downloadInvoice(String url, String invoiceId) async {
+    setState(() {
+      _isOpeningDownload = true;
+      _downloadingInvoiceId = invoiceId;
+    });
+    final err = await downloadInvoicePdf(url: url, invoiceId: invoiceId);
+    if (mounted) {
+      if (err != null) _showSuccessSnack(context, err);
+      setState(() {
+        _isOpeningDownload = false;
+        _downloadingInvoiceId = null;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: AppColors.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Padding(
+        padding: const EdgeInsets.all(22),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Container(
+                width: 42, height: 42,
+                decoration: BoxDecoration(gradient: AppColors.adminGradient, borderRadius: BorderRadius.circular(12)),
+                child: const Icon(Icons.person_add_alt_1_rounded, color: Colors.white, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Client Added', style: GoogleFonts.sora(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                  Text(widget.clientName, style: GoogleFonts.sora(fontSize: 12, color: AppColors.textSecondary), overflow: TextOverflow.ellipsis),
+                ]),
+              ),
+            ]),
+            const SizedBox(height: 20),
+
+            // Step 1 — client created (always done, we're here because it succeeded)
+            _InvoiceStepRow(
+              done: true,
+              loading: false,
+              failed: false,
+              title: 'Client account created',
+              subtitle: 'Login credentials generated',
+            ),
+            const SizedBox(height: 12),
+
+            // Step 2 — invoice generation (POST /api/admin/invoices, body: clientId)
+            // + list fetch (GET /api/admin/invoices/client/:clientId)
+            _InvoiceStepRow(
+              done: !_isLoadingInvoice && !_invoiceFailed,
+              loading: _isLoadingInvoice,
+              failed: _invoiceFailed,
+              title: _isLoadingInvoice
+                  ? 'Generating invoice…'
+                  : (_invoiceFailed ? 'Invoice generation pending' : 'Invoice generated'),
+              subtitle: _isLoadingInvoice
+                  ? 'Fetching invoices for this client'
+                  : (_invoiceFailed
+                  ? (_errorMessage ?? 'Could not confirm invoice yet')
+                  : 'Invoice(s) ready for this client'),
+            ),
+
+            if (!_isLoadingInvoice && !_invoiceFailed) ...[
+              const SizedBox(height: 16),
+              if (_invoices.isEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppColors.success.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.success.withOpacity(0.3)),
+                  ),
+                  child: Text('Invoice generated successfully for this client.',
+                      style: GoogleFonts.sora(fontSize: 12, color: AppColors.textSecondary)),
+                )
+              else
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 260),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    padding: EdgeInsets.zero,
+                    itemCount: _invoices.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    itemBuilder: (context, index) {
+                      final node = _invoices[index];
+                      final invoiceId = _invoiceField(node, ['invoiceNumber', 'invoiceNo', 'number', '_id', 'id']);
+                      final amount = _invoiceField(node, ['totalAmount', 'amount', 'total']);
+                      final status = _invoiceField(node, ['status']) ?? 'generated';
+                      final date = _invoiceField(node, ['createdAt', 'date', 'issueDate']);
+                      final fileUrl = _invoiceFileUrl(node);
+                      final isDownloadingThis = _isOpeningDownload && _downloadingInvoiceId == (invoiceId ?? '$index');
+
+                      return Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: AppColors.success.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppColors.success.withOpacity(0.3)),
+                        ),
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Row(children: [
+                            const Icon(Icons.receipt_long_rounded, color: AppColors.success, size: 16),
+                            const SizedBox(width: 8),
+                            Text('Invoice Details', style: GoogleFonts.sora(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.success)),
+                          ]),
+                          const SizedBox(height: 8),
+                          if (invoiceId != null) _InvoiceDetailLine('Invoice No.', invoiceId),
+                          if (amount != null) _InvoiceDetailLine('Amount', '\$${amount}'),
+                          _InvoiceDetailLine('Status', status),
+                          if (date != null) _InvoiceDetailLine('Date', date),
+                          if (fileUrl != null) ...[
+                            const SizedBox(height: 10),
+                            GestureDetector(
+                              onTap: _isOpeningDownload ? null : () => _downloadInvoice(fileUrl, invoiceId ?? '$index'),
+                              child: Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: AppColors.success.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Center(
+                                  child: isDownloadingThis
+                                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.success))
+                                      : Row(mainAxisSize: MainAxisSize.min, children: [
+                                    const Icon(Icons.download_rounded, color: AppColors.success, size: 16),
+                                    const SizedBox(width: 6),
+                                    Text('Download Invoice', style: GoogleFonts.sora(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.success)),
+                                  ]),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ]),
+                      );
+                    },
+                  ),
+                ),
+            ],
+
+            const SizedBox(height: 20),
+            CommonButton(
+              label: _isLoadingInvoice ? 'Please wait…' : 'Done',
+              gradient: AppColors.adminGradient,
+              onTap: _isLoadingInvoice ? () {} : () => Navigator.of(context).pop(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _InvoiceStepRow extends StatelessWidget {
+  final bool done;
+  final bool loading;
+  final bool failed;
+  final String title;
+  final String subtitle;
+  const _InvoiceStepRow({required this.done, required this.loading, required this.failed, required this.title, required this.subtitle});
+
+  @override
+  Widget build(BuildContext context) {
+    final Color iconColor = failed ? AppColors.warning : (done ? AppColors.success : AppColors.textSecondary);
+    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      SizedBox(
+        width: 24, height: 24,
+        child: loading
+            ? const CircularProgressIndicator(strokeWidth: 2.2, color: AppColors.success)
+            : Icon(
+          failed ? Icons.error_outline_rounded : (done ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded),
+          color: iconColor,
+          size: 22,
+        ),
+      ),
+      const SizedBox(width: 12),
+      Expanded(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(title, style: GoogleFonts.sora(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+          const SizedBox(height: 2),
+          Text(subtitle, style: GoogleFonts.sora(fontSize: 11, color: AppColors.textSecondary)),
+        ]),
+      ),
+    ]);
+  }
+}
+
+class _InvoiceDetailLine extends StatelessWidget {
+  final String label;
+  final String value;
+  const _InvoiceDetailLine(this.label, this.value);
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(children: [
+        SizedBox(width: 80, child: Text(label, style: GoogleFonts.sora(fontSize: 11, color: AppColors.textSecondary))),
+        Expanded(child: Text(value, style: GoogleFonts.sora(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary), overflow: TextOverflow.ellipsis)),
+      ]),
     );
   }
 }
@@ -1710,8 +2139,10 @@ class _SheetField extends StatelessWidget {
   final TextInputType? keyboardType;
   final String? Function(String?)? validator;
   final int maxLines;
+  final List<TextInputFormatter>? inputFormatters;
+  final int? maxLength;
 
-  const _SheetField({required this.label, required this.hint, required this.icon, required this.controller, this.keyboardType, this.validator, this.maxLines = 1});
+  const _SheetField({required this.label, required this.hint, required this.icon, required this.controller, this.keyboardType, this.validator, this.maxLines = 1, this.inputFormatters, this.maxLength});
 
   @override
   Widget build(BuildContext context) {
@@ -1725,6 +2156,9 @@ class _SheetField extends StatelessWidget {
           keyboardType: keyboardType,
           validator: validator,
           maxLines: maxLines,
+          inputFormatters: inputFormatters,
+          maxLength: maxLength,
+          buildCounter: maxLength == null ? null : (_, {required currentLength, required isFocused, maxLength}) => null,
           style: GoogleFonts.sora(fontSize: 13, color: AppColors.textPrimary),
           decoration: InputDecoration(
             hintText: hint,
@@ -2141,7 +2575,7 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
                         if (_user.industry != null && _user.industry!.isNotEmpty)
                           _DetailRow(Icons.category_outlined, 'Industry', _user.industry!),
                         if (_user.displayBudget.isNotEmpty)
-                          _DetailRow(Icons.attach_money_rounded, 'Monthly Budget', _user.displayBudget),
+                          _DetailRow(Icons.currency_rupee_rounded, 'Budget', _user.displayBudget),
                         if (_user.projectTitle != null && _user.projectTitle!.isNotEmpty)
                           _DetailRow(Icons.assignment_outlined, 'Project Title', _user.projectTitle!),
                         if (_user.duration != null && _user.duration!.isNotEmpty)
@@ -2161,6 +2595,10 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
                   for (final group in _chipGroups(accent)) ...[
                     const SizedBox(height: 14),
                     group,
+                  ],
+                  if (_isClient) ...[
+                    const SizedBox(height: 14),
+                    _ClientInvoicesCard(clientId: _user.id, accent: accent),
                   ],
                 ],
               ),
@@ -2634,4 +3072,211 @@ class _PlatMeta {
   final IconData icon;
   final Color color;
   const _PlatMeta(this.label, this.icon, this.color);
+}
+
+// ─────────────────────────────────────────
+// CLIENT DETAIL PAGE → INVOICES SECTION
+// GET /api/admin/invoices/client/:clientId — shown at the bottom of the
+// client detail page, below "Details" / connected platforms etc.
+// ─────────────────────────────────────────
+class _ClientInvoicesCard extends StatefulWidget {
+  final String clientId;
+  final Color accent;
+  const _ClientInvoicesCard({required this.clientId, required this.accent});
+
+  @override
+  State<_ClientInvoicesCard> createState() => _ClientInvoicesCardState();
+}
+
+class _ClientInvoicesCardState extends State<_ClientInvoicesCard> {
+  final _apiService = ApiService();
+
+  bool _isLoading = true;
+  String? _errorMsg;
+  List<Map<String, dynamic>> _invoices = [];
+  bool _isOpeningDownload = false;
+  String? _downloadingInvoiceId;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchInvoices();
+  }
+
+  Future<void> _fetchInvoices() async {
+    setState(() { _isLoading = true; _errorMsg = null; });
+    try {
+      final res = await _apiService.get('${AppConstants.adminInvoicesByClient}/${widget.clientId}');
+      final invoices = parseInvoiceList(res);
+      if (mounted) setState(() { _invoices = invoices; _isLoading = false; });
+    } catch (e) {
+      if (mounted) setState(() { _errorMsg = _cleanErr(e.toString()); _isLoading = false; });
+    }
+  }
+
+  Future<void> _download(String url, String invoiceId) async {
+    setState(() {
+      _isOpeningDownload = true;
+      _downloadingInvoiceId = invoiceId;
+    });
+    final err = await downloadInvoicePdf(url: url, invoiceId: invoiceId);
+    if (mounted) {
+      if (err != null) _showSuccessSnack(context, err);
+      setState(() {
+        _isOpeningDownload = false;
+        _downloadingInvoiceId = null;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = widget.accent;
+
+    return SizedBox(
+      width: double.infinity,
+      child: CommonCard(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Icon(Icons.receipt_long_rounded, size: 17, color: accent),
+              const SizedBox(width: 8),
+              Text('Invoices', style: GoogleFonts.sora(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+              const Spacer(),
+              if (!_isLoading)
+                InkWell(
+                  onTap: _fetchInvoices,
+                  child: Icon(Icons.refresh_rounded, size: 18, color: AppColors.textMuted),
+                ),
+            ]),
+            const SizedBox(height: 12),
+            if (_isLoading)
+              Center(child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: CircularProgressIndicator(strokeWidth: 2, color: accent),
+              ))
+            else if (_errorMsg != null)
+              _InvoiceInlineMessage(text: _errorMsg!, isError: true, onRetry: _fetchInvoices)
+            else if (_invoices.isEmpty)
+                _InvoiceInlineMessage(text: 'No invoices generated for this client yet.', isError: false)
+              else
+                Column(
+                  children: [
+                    for (int i = 0; i < _invoices.length; i++) ...[
+                      if (i != 0) const SizedBox(height: 10),
+                      _InvoiceListTile(
+                        node: _invoices[i],
+                        index: i,
+                        accent: accent,
+                        isDownloading: _isOpeningDownload &&
+                            _downloadingInvoiceId == (invoiceField(_invoices[i], ['invoiceNumber', 'invoiceNo', 'number', '_id', 'id']) ?? '$i'),
+                        isAnyDownloading: _isOpeningDownload,
+                        onDownload: _download,
+                      ),
+                    ],
+                  ],
+                ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _InvoiceInlineMessage extends StatelessWidget {
+  final String text;
+  final bool isError;
+  final VoidCallback? onRetry;
+  const _InvoiceInlineMessage({required this.text, required this.isError, this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: (isError ? AppColors.error : AppColors.textMuted).withOpacity(0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: (isError ? AppColors.error : AppColors.textMuted).withOpacity(0.25)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(text, style: GoogleFonts.sora(fontSize: 12.5, color: AppColors.textSecondary)),
+        if (isError && onRetry != null) ...[
+          const SizedBox(height: 8),
+          InkWell(
+            onTap: onRetry,
+            child: Text('Retry', style: GoogleFonts.sora(fontSize: 12.5, fontWeight: FontWeight.w700, color: AppColors.error)),
+          ),
+        ],
+      ]),
+    );
+  }
+}
+
+class _InvoiceListTile extends StatelessWidget {
+  final Map<String, dynamic> node;
+  final int index;
+  final Color accent;
+  final bool isDownloading;
+  final bool isAnyDownloading;
+  final Future<void> Function(String url, String invoiceId) onDownload;
+
+  const _InvoiceListTile({
+    required this.node,
+    required this.index,
+    required this.accent,
+    required this.isDownloading,
+    required this.isAnyDownloading,
+    required this.onDownload,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final invoiceId = invoiceField(node, ['invoiceNumber', 'invoiceNo', 'number', '_id', 'id']);
+    final amount = invoiceField(node, ['totalAmount', 'amount', 'total']);
+    final status = invoiceField(node, ['status']) ?? 'generated';
+    final date = invoiceField(node, ['createdAt', 'date', 'issueDate']);
+    final fileUrl = invoiceFileUrl(node);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: accent.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: accent.withOpacity(0.2)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        if (invoiceId != null) _InvoiceDetailLine('Invoice No.', invoiceId),
+        if (amount != null) _InvoiceDetailLine('Amount', '\$₹{amount}'),
+        _InvoiceDetailLine('Status', status),
+        if (date != null) _InvoiceDetailLine('Date', date),
+        if (fileUrl != null) ...[
+          const SizedBox(height: 10),
+          GestureDetector(
+            onTap: isAnyDownloading ? null : () => onDownload(fileUrl, invoiceId ?? '$index'),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              decoration: BoxDecoration(
+                color: accent.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Center(
+                child: isDownloading
+                    ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: accent))
+                    : Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.download_rounded, color: accent, size: 16),
+                  const SizedBox(width: 6),
+                  Text('Download Invoice', style: GoogleFonts.sora(fontSize: 12, fontWeight: FontWeight.w700, color: accent)),
+                ]),
+              ),
+            ),
+          ),
+        ],
+      ]),
+    );
+  }
 }

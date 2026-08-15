@@ -122,9 +122,9 @@ class AdminUserModel {
   /// First letter of name, safe fallback to '?'
   String get initial => name.isNotEmpty ? name[0].toUpperCase() : '?';
 
-  /// Display-friendly budget with $ prefix
+  /// Display-friendly budget with ₹ prefix
   String get displayBudget =>
-      (budget != null && budget!.isNotEmpty) ? '\$$budget' : '';
+      (budget != null && budget!.isNotEmpty) ? '\u20B9$budget' : '';
 
   /// Subtitle line shown on list card
   String get subtitle {
