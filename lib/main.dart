@@ -93,7 +93,7 @@ class MyApp extends StatelessWidget {
         builder: (context) {
           final router = AppRouter.createRouter(context);
           return MaterialApp.router(
-            title: 'GrowthCraft SMM',
+            title: 'SOT SMM',
             scaffoldMessengerKey: rootScaffoldMessengerKey,
             debugShowCheckedModeBanner: false,
             theme: AppTheme.darkTheme,

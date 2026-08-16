@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_filex/open_filex.dart';
+import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/network/api_service.dart';
@@ -817,7 +818,7 @@ class _AdminTeamPageState extends State<AdminTeamPage> {
       'Graphic Designer': 'Graphic Designer',
       'Video Editor': 'Video Editor',
       'Content Writer': 'Content Writer',
-      'Developer': 'Developer',
+      'Smm': 'SMM Executive',
       'Support': 'Support Executive',
       'SEO Specialist': 'SEO Specialist',
     };
@@ -994,7 +995,7 @@ class _AddMemberSheetState extends State<_AddMemberSheet> {
     'Graphic Designer': 'Graphic Designer',
     'Video Editor': 'Video Editor',
     'Content Writer': 'Content Writer',
-    'Developer': 'Developer',
+    'Smm': 'SMM Executive',
     'Support': 'Support Executive',
     'SEO Specialist': 'SEO Specialist',
   };
@@ -1150,7 +1151,7 @@ class _EditMemberSheetState extends State<_EditMemberSheet> {
     'Graphic Designer': 'Graphic Designer',
     'Video Editor': 'Video Editor',
     'Content Writer': 'Content Writer',
-    'Developer': 'Developer',
+    'Smm': 'SMM Executive',
     'Support': 'Support Executive',
     'SEO Specialist': 'SEO Specialist',
   };
@@ -1498,6 +1499,14 @@ String? invoiceField(Map<String, dynamic> node, List<String> keys) {
   return null;
 }
 
+// Formats a raw ISO date string like "2026-08-14T08:55:58.244Z" into a
+// readable "14 Aug 2026". Falls back to the raw string if parsing fails.
+String formatInvoiceDate(String raw) {
+  final parsed = DateTime.tryParse(raw);
+  if (parsed == null) return raw;
+  return DateFormat('d MMM yyyy').format(parsed.toLocal());
+}
+
 String? invoiceFileUrl(Map<String, dynamic> node) {
   final rawUrl = invoiceField(node, [
     'pdfUrl', 'invoiceUrl', 'fileUrl', 'downloadUrl', 'receiptUrl', 'url',
@@ -1753,9 +1762,9 @@ class _ClientInvoiceStatusDialogState extends State<_ClientInvoiceStatusDialog> 
                           ]),
                           const SizedBox(height: 8),
                           if (invoiceId != null) _InvoiceDetailLine('Invoice No.', invoiceId),
-                          if (amount != null) _InvoiceDetailLine('Amount', '\$${amount}'),
+                          if (amount != null) _InvoiceDetailLine('Amount', '₹$amount'),
                           _InvoiceDetailLine('Status', status),
-                          if (date != null) _InvoiceDetailLine('Date', date),
+                          if (date != null) _InvoiceDetailLine('Date', formatInvoiceDate(date)),
                           if (fileUrl != null) ...[
                             const SizedBox(height: 10),
                             GestureDetector(
@@ -3045,16 +3054,16 @@ class _PlatformsCard extends StatelessWidget {
                 return Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.08),
+                    color: meta.color.withOpacity(0.08),
                     borderRadius: BorderRadius.circular(11),
-                    border: Border.all(color: Colors.white.withOpacity(0.22)),
+                    border: Border.all(color: meta.color.withOpacity(0.28)),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(meta.icon, size: 15, color: meta.color),
                       const SizedBox(width: 6),
-                      Text(meta.label, style: GoogleFonts.sora(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                      Text(meta.label, style: GoogleFonts.sora(fontSize: 12, fontWeight: FontWeight.w600, color: meta.color)),
                     ],
                   ),
                 );
@@ -3250,9 +3259,9 @@ class _InvoiceListTile extends StatelessWidget {
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         if (invoiceId != null) _InvoiceDetailLine('Invoice No.', invoiceId),
-        if (amount != null) _InvoiceDetailLine('Amount', '\$₹{amount}'),
+        if (amount != null) _InvoiceDetailLine('Amount', '₹$amount'),
         _InvoiceDetailLine('Status', status),
-        if (date != null) _InvoiceDetailLine('Date', date),
+        if (date != null) _InvoiceDetailLine('Date', formatInvoiceDate(date)),
         if (fileUrl != null) ...[
           const SizedBox(height: 10),
           GestureDetector(
