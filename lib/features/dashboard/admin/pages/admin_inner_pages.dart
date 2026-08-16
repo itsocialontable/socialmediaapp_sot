@@ -3045,16 +3045,16 @@ class _PlatformsCard extends StatelessWidget {
                 return Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
                   decoration: BoxDecoration(
-                    color: meta.color.withOpacity(0.08),
+                    color: Colors.white.withOpacity(0.08),
                     borderRadius: BorderRadius.circular(11),
-                    border: Border.all(color: meta.color.withOpacity(0.28)),
+                    border: Border.all(color: Colors.white.withOpacity(0.22)),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(meta.icon, size: 15, color: meta.color),
                       const SizedBox(width: 6),
-                      Text(meta.label, style: GoogleFonts.sora(fontSize: 12, fontWeight: FontWeight.w600, color: meta.color)),
+                      Text(meta.label, style: GoogleFonts.sora(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
                     ],
                   ),
                 );

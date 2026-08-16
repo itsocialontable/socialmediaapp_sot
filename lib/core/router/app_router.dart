@@ -21,6 +21,9 @@ import '../../features/dashboard/smm/sheets/assign_task_page.dart';
 import '../../features/dashboard/smm/pages/smm_design_projects_page.dart';
 import '../../features/dashboard/smm/pages/smm_add_client_page.dart';
 import '../../shared/pages/notifications_page.dart';
+import '../../shared/pages/help_support_page.dart';
+import '../../shared/pages/privacy_policy_page.dart';
+import '../../shared/pages/about_page.dart';
 import '../theme/app_theme.dart';
 
 class AppRouter {
@@ -72,6 +75,36 @@ class AppRouter {
           },
         ),
         GoRoute(path: '/dashboard/client', builder: (_, __) => const ClientDashboardScreen()),
+        GoRoute(
+          path: '/help-support',
+          builder: (context, state) {
+            final extra = state.extra as Map<String, dynamic>? ?? {};
+            return HelpSupportPage(
+              accentColor: (extra['accentColor'] as Color?) ?? AppColors.primary,
+              gradient: (extra['gradient'] as LinearGradient?) ?? AppColors.adminGradient,
+            );
+          },
+        ),
+        GoRoute(
+          path: '/privacy-policy',
+          builder: (context, state) {
+            final extra = state.extra as Map<String, dynamic>? ?? {};
+            return PrivacyPolicyPage(
+              accentColor: (extra['accentColor'] as Color?) ?? AppColors.primary,
+              gradient: (extra['gradient'] as LinearGradient?) ?? AppColors.adminGradient,
+            );
+          },
+        ),
+        GoRoute(
+          path: '/about',
+          builder: (context, state) {
+            final extra = state.extra as Map<String, dynamic>? ?? {};
+            return AboutPage(
+              accentColor: (extra['accentColor'] as Color?) ?? AppColors.primary,
+              gradient: (extra['gradient'] as LinearGradient?) ?? AppColors.adminGradient,
+            );
+          },
+        ),
         // GoRoute(
         //   path: '/profile',
         //   builder: (context, state) => const ProfilePage( accentColor: AppColors.primary,

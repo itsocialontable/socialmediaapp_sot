@@ -13,6 +13,9 @@ import '../../core/errors/app_exceptions.dart';
 import '../widgets/common_widgets.dart';
 import 'edit_profile_page.dart';
 import 'notifications_page.dart';
+import 'help_support_page.dart';
+import 'privacy_policy_page.dart';
+import 'about_page.dart';
 
 
 // ─────────────────────────────────────────
@@ -35,7 +38,7 @@ class ProfilePage extends StatelessWidget {
     final menuItems = [
       _MenuItem(Icons.person_outline_rounded, 'Edit Profile', 'Update your information'),
       _MenuItem(Icons.notifications_outlined, 'Notifications', 'View alerts & reminders'),
-      _MenuItem(Icons.color_lens_outlined, 'Appearance', 'Theme & display settings'),
+      // _MenuItem(Icons.color_lens_outlined, 'Appearance', 'Theme & display settings'),
       _MenuItem(Icons.help_outline_rounded, 'Help & Support', 'FAQs and contact'),
       _MenuItem(Icons.privacy_tip_outlined, 'Privacy Policy', 'Read our privacy policy'),
       _MenuItem(Icons.info_outline_rounded, 'About', 'App version & info'),
@@ -153,6 +156,18 @@ class ProfilePage extends StatelessWidget {
                     ));
                   } else if (item.title == 'Notifications') {
                     _openNotificationsPage(context);
+                  } else if (item.title == 'Help & Support') {
+                    Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => HelpSupportPage(accentColor: accentColor, gradient: gradient),
+                    ));
+                  } else if (item.title == 'Privacy Policy') {
+                    Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => PrivacyPolicyPage(accentColor: accentColor, gradient: gradient),
+                    ));
+                  } else if (item.title == 'About') {
+                    Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => AboutPage(accentColor: accentColor, gradient: gradient),
+                    ));
                   }
                 },
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
