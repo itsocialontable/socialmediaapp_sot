@@ -12,7 +12,7 @@ class AppColors {
   static const Color primary = Color(0xFF113023); // Green
   static const Color primaryLight = Color(0xFF1B4A36); // Light Green
   static const Color secondary = Color(0xFF35466B); // Blue
-  static const Color accent = Color(0xFFFFFFFF); // White
+  static const Color accent = Color(0xFF1B4A36); // Classic light green (matches primaryLight)
 
   // Role Colors
   static const Color adminColor = Color(0xFF113023);

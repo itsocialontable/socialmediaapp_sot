@@ -753,7 +753,7 @@ class _DesignerAssetsPageState extends State<DesignerAssetsPage> {
     ('Brand Kits', '40 items', Icons.folder_rounded, AppColors.designerColor),
     ('Templates', '28 items', Icons.dashboard_rounded, AppColors.smmColor),
     ('Icons', '100 items', Icons.interests_rounded, AppColors.info),
-    ('Stock Images', '200 items', Icons.photo_library_rounded, AppColors.accent),
+    ('Stock Images', '200 items', Icons.photo_library_rounded, AppColors.primaryLight),
     ('Fonts', '15 items', Icons.text_fields_rounded, AppColors.warning),
     ('Graphics', '65 items', Icons.auto_awesome_rounded, AppColors.secondary),
   ];

@@ -257,7 +257,7 @@ class _AdminHomeState extends State<_AdminHome> {
                 label: 'Total SMM',
                 value: '$totalSMMs',
                 icon: Icons.folder_rounded,
-                color: AppColors.accent,
+                color: AppColors.primaryLight,
               ),
 
               StatCard(

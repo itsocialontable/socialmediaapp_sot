@@ -169,6 +169,7 @@ class SmmDesignProjectUpdateRequest {
   final String? priority;
   final String? description;
   final DateTime? deadline;
+  final String? designerId;
 
   const SmmDesignProjectUpdateRequest({
     this.title,
@@ -176,6 +177,7 @@ class SmmDesignProjectUpdateRequest {
     this.priority,
     this.description,
     this.deadline,
+    this.designerId,
   });
 
   Map<String, dynamic> toJson() {
@@ -185,6 +187,7 @@ class SmmDesignProjectUpdateRequest {
     if (priority != null) map['priority'] = priority;
     if (description != null) map['description'] = description;
     if (deadline != null) map['deadline'] = deadline!.toUtc().toIso8601String();
+    if (designerId != null) map['designerId'] = designerId;
     return map;
   }
 }

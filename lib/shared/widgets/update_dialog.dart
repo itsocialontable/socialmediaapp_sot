@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/services/update_service.dart';
+import '../../core/theme/app_theme.dart';
 
 class UpdateDialog extends StatefulWidget {
   final UpdateInfo info;
@@ -36,7 +37,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
     return PopScope(
       canPop: true,
       child: AlertDialog(
-        backgroundColor: const Color(0xFF0F1629),
+        backgroundColor: AppColors.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
         ),
@@ -48,17 +49,12 @@ class _UpdateDialogState extends State<UpdateDialog> {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [
-                    Color(0xFF667EEA),
-                    Color(0xFF764BA2),
-                  ],
-                ),
+                gradient: AppColors.primaryGradient,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: const Icon(
                 Icons.system_update,
-                color: Colors.white,
+                color: AppColors.textPrimary,
                 size: 20,
               ),
             ),
@@ -69,7 +65,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
               child: Text(
                 'Update Available',
                 style: GoogleFonts.sora(
-                  color: Colors.white,
+                  color: AppColors.textPrimary,
                   fontWeight: FontWeight.w700,
                   fontSize: 16,
                 ),
@@ -81,7 +77,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
                 onPressed: () => Navigator.of(context).pop(),
                 icon: const Icon(
                   Icons.close,
-                  color: Colors.white70,
+                  color: AppColors.textSecondary,
                 ),
               ),
           ],
@@ -94,7 +90,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
             Text(
               'A new version (${widget.info.latestVersion}) is available.',
               style: GoogleFonts.sora(
-                color: Colors.white70,
+                color: AppColors.textSecondary,
                 fontSize: 13,
               ),
             ),
@@ -106,13 +102,13 @@ class _UpdateDialogState extends State<UpdateDialog> {
                 width: double.infinity,
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.05),
+                  color: AppColors.surfaceLight,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
                   widget.info.releaseNotes,
                   style: GoogleFonts.sora(
-                    color: Colors.white60,
+                    color: AppColors.textMuted,
                     fontSize: 12,
                   ),
                 ),
@@ -125,7 +121,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
               Text(
                 'Downloading... ${(_progress * 100).toStringAsFixed(0)}%',
                 style: GoogleFonts.sora(
-                  color: Colors.white70,
+                  color: AppColors.textSecondary,
                   fontSize: 12,
                 ),
               ),
@@ -136,9 +132,9 @@ class _UpdateDialogState extends State<UpdateDialog> {
                 borderRadius: BorderRadius.circular(4),
                 child: LinearProgressIndicator(
                   value: _progress,
-                  backgroundColor: Colors.white12,
+                  backgroundColor: AppColors.surfaceLight,
                   valueColor: const AlwaysStoppedAnimation(
-                    Color(0xFF667EEA),
+                    AppColors.primary,
                   ),
                   minHeight: 6,
                 ),
@@ -151,7 +147,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
               Text(
                 _error!,
                 style: GoogleFonts.sora(
-                  color: Colors.redAccent,
+                  color: AppColors.error,
                   fontSize: 12,
                 ),
               ),
@@ -165,7 +161,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
           ElevatedButton(
             onPressed: _startDownload,
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF667EEA),
+              backgroundColor: AppColors.primary,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
@@ -173,7 +169,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
             child: Text(
               'Update Now',
               style: GoogleFonts.sora(
-                color: Colors.white,
+                color: AppColors.textPrimary,
                 fontWeight: FontWeight.w600,
               ),
             ),

@@ -92,7 +92,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
               StatCard(label: 'Total Reach', value: '156.2K',icon: Icons.people_rounded, color: widget.accentColor),
               StatCard(label: 'Engagement', value: '28.4K',  icon: Icons.favorite_rounded, color: AppColors.secondary),
               StatCard(label: 'Impressions', value: '245.6K',  icon: Icons.visibility_rounded, color: AppColors.info),
-              StatCard(label: 'Profile Visits', value: '8.6K',icon: Icons.person_search_rounded, color: AppColors.accent),
+              StatCard(label: 'Profile Visits', value: '8.6K',icon: Icons.person_search_rounded, color: AppColors.primaryLight),
             ],
           ).animate(delay: 100.ms).fadeIn(),
 

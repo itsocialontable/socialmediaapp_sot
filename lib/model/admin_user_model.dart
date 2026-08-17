@@ -23,6 +23,7 @@ class AdminUserModel {
   final String? projectTitle;
   final String? duration;
   final String? gstNumber;
+  final String? profileImage;
   final List<String> platform;
 
   const AdminUserModel({
@@ -40,6 +41,7 @@ class AdminUserModel {
     this.projectTitle,
     this.duration,
     this.gstNumber,
+    this.profileImage,
     this.platform = const [],
   });
 
@@ -61,6 +63,7 @@ class AdminUserModel {
       projectTitle:   json['projectTitle']?.toString(),
       duration:       json['duration']?.toString(),
       gstNumber:      json['gstNumber']?.toString(),
+      profileImage:   json['profileImage']?.toString(),
       platform:       (json['platforms'] ?? json['platform']) is List
           ? ((json['platforms'] ?? json['platform']) as List).map((e) => e.toString().toLowerCase()).toList()
           : <String>[],
@@ -82,6 +85,7 @@ class AdminUserModel {
     'projectTitle':  projectTitle,
     'duration':      duration,
     'gstNumber':     gstNumber,
+    'profileImage':  profileImage,
     'platform':      platform,
   };
 
@@ -98,6 +102,7 @@ class AdminUserModel {
     String? projectTitle,
     String? duration,
     String? gstNumber,
+    String? profileImage,
     List<String>? platform,
   }) {
     return AdminUserModel(
@@ -115,9 +120,13 @@ class AdminUserModel {
       projectTitle:   projectTitle ?? this.projectTitle,
       duration:       duration ?? this.duration,
       gstNumber:      gstNumber ?? this.gstNumber,
+      profileImage:   profileImage ?? this.profileImage,
       platform:       platform ?? this.platform,
     );
   }
+
+  /// True when a usable profile image URL is present.
+  bool get hasProfileImage => profileImage != null && profileImage!.trim().isNotEmpty;
 
   /// First letter of name, safe fallback to '?'
   String get initial => name.isNotEmpty ? name[0].toUpperCase() : '?';

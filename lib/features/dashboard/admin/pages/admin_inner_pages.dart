@@ -17,6 +17,52 @@ import '../../../../core/constants/app_constants.dart';
 import '../../../../model/admin_user_model.dart';
 import '../../../../shared/widgets/common_widgets.dart';
 
+// ─── Small reusable avatar: shows the user's profileImage when present,
+// otherwise falls back to the initials circle (unchanged look) ────────────
+class _UserAvatar extends StatelessWidget {
+  final AdminUserModel user;
+  final double size;
+  final Color color;
+  final double fontSize;
+  const _UserAvatar({
+    required this.user,
+    required this.size,
+    required this.color,
+    this.fontSize = 16,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final url = user.profileImage;
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(color: color.withOpacity(0.15), shape: BoxShape.circle),
+      clipBehavior: Clip.antiAlias,
+      child: (url != null && url.trim().isNotEmpty)
+          ? Image.network(
+        url,
+        fit: BoxFit.cover,
+        width: size,
+        height: size,
+        errorBuilder: (_, __, ___) => _initialFallback(),
+        loadingBuilder: (context, child, progress) =>
+        progress == null ? child : _initialFallback(),
+      )
+          : _initialFallback(),
+    );
+  }
+
+  Widget _initialFallback() {
+    return Center(
+      child: Text(
+        user.initial,
+        style: GoogleFonts.sora(fontWeight: FontWeight.w700, color: color, fontSize: fontSize),
+      ),
+    );
+  }
+}
+
 // ─────────────────────────────────────────
 // CLIENTS PAGE  — real API
 // ─────────────────────────────────────────
@@ -199,11 +245,7 @@ class _AdminClientsPageState extends State<AdminClientsPage> {
                       padding: const EdgeInsets.all(14),
                       child: Row(
                         children: [
-                          CircleAvatar(
-                            radius: 22,
-                            backgroundColor: AppColors.adminColor.withOpacity(0.15),
-                            child: Text(c.initial, style: GoogleFonts.sora(fontWeight: FontWeight.w700, color: AppColors.adminColor, fontSize: 16)),
-                          ),
+                          _UserAvatar(user: c, size: 44, color: AppColors.adminColor),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(
@@ -763,7 +805,7 @@ class _AdminTeamPageState extends State<AdminTeamPage> {
       case 'SMM': return AppColors.smmColor;
       case 'Graphic Designer': return AppColors.designerColor;
       case 'Developer': return AppColors.info;
-      case 'Support': return AppColors.accent;
+      case 'Support': return AppColors.primaryLight;
       default: return AppColors.warning;
     }
   }
@@ -861,11 +903,7 @@ class _AdminTeamPageState extends State<AdminTeamPage> {
                       padding: const EdgeInsets.all(14),
                       child: Row(
                         children: [
-                          Container(
-                            width: 46, height: 46,
-                            decoration: BoxDecoration(color: col.withOpacity(0.15), shape: BoxShape.circle),
-                            child: Center(child: Text(m.initial, style: GoogleFonts.sora(fontWeight: FontWeight.w700, color: col, fontSize: 16))),
-                          ),
+                          _UserAvatar(user: m, size: 46, color: col),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(
@@ -961,7 +999,7 @@ class _AddMemberSheetState extends State<_AddMemberSheet> {
       case 'SMM': return AppColors.smmColor;
       case 'Graphic Designer': return AppColors.designerColor;
       case 'Developer': return AppColors.info;
-      case 'Support': return AppColors.accent;
+      case 'Support': return AppColors.primaryLight;
       default: return AppColors.warning;
     }
   }
@@ -1117,7 +1155,7 @@ class _EditMemberSheetState extends State<_EditMemberSheet> {
       case 'SMM': return AppColors.smmColor;
       case 'Graphic Designer': return AppColors.designerColor;
       case 'Developer': return AppColors.info;
-      case 'Support': return AppColors.accent;
+      case 'Support': return AppColors.primaryLight;
       default: return AppColors.warning;
     }
   }
@@ -1257,7 +1295,7 @@ class AdminProjectsPage extends StatelessWidget {
     _Project('Summer Sale Campaign', 'All Platforms', 0.90, 'Completed', AppColors.success),
     _Project('Food Restaurant Promo', 'Instagram', 0.30, 'Active', AppColors.warning),
     _Project('Travel Agency', 'Facebook, Instagram', 0.50, 'On Hold', AppColors.textMuted),
-    _Project('Fitness Brand', 'All Platforms', 0.85, 'Active', AppColors.accent),
+    _Project('Fitness Brand', 'All Platforms', 0.85, 'Active', AppColors.primaryLight),
   ];
 
   @override
@@ -2686,7 +2724,7 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
         '_id', 'id', 'name', 'email', 'role', 'phoneNumber', 'phone',
         'companyName', 'industry', 'budget', 'address', 'specialization',
         'status', 'platform', 'platforms', '__v', 'password',
-        'projectTitle', 'duration', 'gstNumber',
+        'projectTitle', 'duration', 'gstNumber', 'profileImage',
       };
       const internal = {
         'agencyId', 'createdByAdmin', 'loginSource', 'isActive',
@@ -2991,7 +3029,21 @@ class _DetailHeaderBanner extends StatelessWidget {
               color: Colors.white.withOpacity(0.16),
               border: Border.all(color: Colors.white.withOpacity(0.35), width: 1.5),
             ),
-            child: Center(
+            clipBehavior: Clip.antiAlias,
+            child: (user.hasProfileImage)
+                ? Image.network(
+              user.profileImage!,
+              fit: BoxFit.cover,
+              width: 72,
+              height: 72,
+              errorBuilder: (_, __, ___) => Center(
+                child: Text(
+                  user.initial,
+                  style: GoogleFonts.sora(fontSize: 26, fontWeight: FontWeight.w700, color: Colors.white),
+                ),
+              ),
+            )
+                : Center(
               child: Text(
                 user.initial,
                 style: GoogleFonts.sora(fontSize: 26, fontWeight: FontWeight.w700, color: Colors.white),

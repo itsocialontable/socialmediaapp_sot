@@ -49,7 +49,7 @@ class CommonScaffold extends StatelessWidget {
                 Positioned(
                   top: MediaQuery.of(context).size.height * 0.4,
                   right: -50,
-                  child: _GlowOrb(color: AppColors.accent.withOpacity(0.08), size: 200),
+                  child: _GlowOrb(color: AppColors.primaryLight.withOpacity(0.08), size: 200),
                 ),
                 // Content
                 body,

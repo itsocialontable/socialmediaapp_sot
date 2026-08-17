@@ -644,7 +644,7 @@ class _DesignerHomeState extends State<_DesignerHome> {
   //               Container(
   //                 width: 40, height: 40,
   //                 decoration: BoxDecoration(
-  //                     color: AppColors.accent.withOpacity(0.15),
+  //                     color: AppColors.primaryLight.withOpacity(0.15),
   //                     borderRadius: BorderRadius.circular(10)),
   //                 child: const Icon(Icons.task_alt_rounded,
   //                     color: AppColors.designerColor, size: 20),

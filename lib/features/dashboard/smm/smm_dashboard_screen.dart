@@ -19,6 +19,7 @@ import '../../../shared/pages/messages_page.dart';
 import '../../../shared/pages/profile_page.dart';
 import '../../../shared/pages/analytics_page.dart';
 import 'pages/smm_inner_pages.dart';
+import 'pages/smm_design_projects_page.dart';
 import 'sheets/create_post_page.dart';
 import 'sheets/posts_tab_page.dart';
 import 'sheets/connected_accounts_page.dart';
@@ -799,7 +800,7 @@ class _SmmHomeState extends State<_SmmHome> {
       case 'pending': return AppColors.warning;
       case 'in progress': return AppColors.info;
       case 'completed': return AppColors.success;
-      case 'revision': return AppColors.accent;
+      case 'revision': return AppColors.primaryLight;
       case 'overdue': return AppColors.error;
       default: return AppColors.textSecondary;
     }
@@ -1082,7 +1083,7 @@ class _SmmHomeState extends State<_SmmHome> {
                     label: 'Active Projects',
                     value: '${d.inProgressProjects}',
                     icon: Icons.folder_rounded,
-                    color: AppColors.accent,
+                    color: AppColors.primaryLight,
                   ),
                   StatCard(
                     label: 'Total Projects',
@@ -1105,29 +1106,48 @@ class _SmmHomeState extends State<_SmmHome> {
                             fontSize: 15,
                             fontWeight: FontWeight.w700,
                             color: AppColors.textPrimary)),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                          color: AppColors.warning.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(6)),
-                      child: Text('${d.pendingProjects} Pending',
-                          style: GoogleFonts.sora(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.warning)),
-                    ),
+                    Row(children: [
+                      if (d.recentProjects.length > 4)
+                        GestureDetector(
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => const SmmDesignProjectsListPage()),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: Text('See all',
+                                style: GoogleFonts.sora(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.smmColor)),
+                          ),
+                        ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                            color: AppColors.warning.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(6)),
+                        child: Text('${d.pendingProjects} Pending',
+                            style: GoogleFonts.sora(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.warning)),
+                      ),
+                    ]),
                   ],
                 ).animate(delay: 300.ms).fadeIn(),
                 const SizedBox(height: 12),
 
-                ...d.recentProjects.asMap().entries.map((e) {
+                ...d.recentProjects.take(4).toList().asMap().entries.map((e) {
                   final p = e.value;
                   final clientMap = p['client'] as Map<String, dynamic>? ?? {};
                   final designerMap = p['designer'] as Map<String, dynamic>? ?? {};
                   final status = (p['status'] as String? ?? 'Pending');
                   final priority = (p['priority'] as String? ?? '');
                   final title = (p['title'] as String? ?? 'Untitled');
+                  final projectId = (p['_id'] ?? p['id'] ?? '').toString();
                   final clientName = (clientMap['companyName'] ?? clientMap['name'] ?? '—').toString();
                   final designerName = (designerMap['name'] ?? '—').toString();
                   final deadline = _formatDeadline(p['deadline'] as String?);
@@ -1140,83 +1160,92 @@ class _SmmHomeState extends State<_SmmHome> {
 
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 10),
-                    child: CommonCard(
-                      padding: const EdgeInsets.all(14),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(children: [
-                            Container(
-                                width: 40, height: 40,
-                                decoration: BoxDecoration(
-                                    gradient: AppColors.smmGradient,
-                                    borderRadius: BorderRadius.circular(10)),
-                                child: const Icon(Icons.design_services_rounded,
-                                    color: Colors.white, size: 20)),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(title,
-                                        style: GoogleFonts.sora(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w600,
-                                            color: AppColors.textPrimary)),
-                                    Text(clientName,
-                                        style: GoogleFonts.sora(
-                                            fontSize: 11,
-                                            color: AppColors.textSecondary)),
-                                  ]),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                  color: statusColor.withOpacity(0.12),
-                                  borderRadius: BorderRadius.circular(6)),
-                              child: Text(status,
-                                  style: GoogleFonts.sora(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w600,
-                                      color: statusColor)),
-                            ),
-                          ]),
-                          const SizedBox(height: 10),
-                          Row(children: [
-                            const Icon(Icons.person_outline_rounded,
-                                size: 12, color: AppColors.textMuted),
-                            const SizedBox(width: 4),
-                            Text(designerName,
-                                style: GoogleFonts.sora(
-                                    fontSize: 11, color: AppColors.textSecondary)),
-                            const SizedBox(width: 12),
-                            const Icon(Icons.calendar_today_rounded,
-                                size: 12, color: AppColors.textMuted),
-                            const SizedBox(width: 4),
-                            Text(deadline,
-                                style: GoogleFonts.sora(
-                                    fontSize: 11, color: AppColors.textSecondary)),
-                            const Spacer(),
-                            if (priority.isNotEmpty)
+                    child: GestureDetector(
+                      onTap: projectId.isEmpty
+                          ? null
+                          : () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => SmmDesignProjectDetailPage(projectId: projectId)),
+                      ),
+                      child: CommonCard(
+                        padding: const EdgeInsets.all(14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(children: [
+                              Container(
+                                  width: 40, height: 40,
+                                  decoration: BoxDecoration(
+                                      gradient: AppColors.smmGradient,
+                                      borderRadius: BorderRadius.circular(10)),
+                                  child: const Icon(Icons.design_services_rounded,
+                                      color: Colors.white, size: 20)),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(title,
+                                          style: GoogleFonts.sora(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w600,
+                                              color: AppColors.textPrimary)),
+                                      Text(clientName,
+                                          style: GoogleFonts.sora(
+                                              fontSize: 11,
+                                              color: AppColors.textSecondary)),
+                                    ]),
+                              ),
                               Container(
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 7, vertical: 3),
+                                    horizontal: 8, vertical: 4),
                                 decoration: BoxDecoration(
-                                    color: priorityColor.withOpacity(0.12),
-                                    borderRadius: BorderRadius.circular(5)),
-                                child: Text(priority,
+                                    color: statusColor.withOpacity(0.12),
+                                    borderRadius: BorderRadius.circular(6)),
+                                child: Text(status,
                                     style: GoogleFonts.sora(
                                         fontSize: 10,
                                         fontWeight: FontWeight.w600,
-                                        color: priorityColor)),
+                                        color: statusColor)),
                               ),
-                          ]),
-                        ],
-                      ),
-                    ).animate(
-                        delay: Duration(milliseconds: 350 + e.key * 80))
-                        .fadeIn(),
+                            ]),
+                            const SizedBox(height: 10),
+                            Row(children: [
+                              const Icon(Icons.person_outline_rounded,
+                                  size: 12, color: AppColors.textMuted),
+                              const SizedBox(width: 4),
+                              Text(designerName,
+                                  style: GoogleFonts.sora(
+                                      fontSize: 11, color: AppColors.textSecondary)),
+                              const SizedBox(width: 12),
+                              const Icon(Icons.calendar_today_rounded,
+                                  size: 12, color: AppColors.textMuted),
+                              const SizedBox(width: 4),
+                              Text(deadline,
+                                  style: GoogleFonts.sora(
+                                      fontSize: 11, color: AppColors.textSecondary)),
+                              const Spacer(),
+                              if (priority.isNotEmpty)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 7, vertical: 3),
+                                  decoration: BoxDecoration(
+                                      color: priorityColor.withOpacity(0.12),
+                                      borderRadius: BorderRadius.circular(5)),
+                                  child: Text(priority,
+                                      style: GoogleFonts.sora(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w600,
+                                          color: priorityColor)),
+                                ),
+                            ]),
+                          ],
+                        ),
+                      ).animate(
+                          delay: Duration(milliseconds: 350 + e.key * 80))
+                          .fadeIn(),
+                    ),
                   );
                 }),
                 const SizedBox(height: 24),
