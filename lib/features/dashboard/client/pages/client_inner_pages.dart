@@ -24,7 +24,23 @@ class ClientProjectsPage extends StatefulWidget {
 
 class _ClientProjectsPageState extends State<ClientProjectsPage> {
   int _tab = 0;
-  final _tabs = ['All', 'In Progress', 'Pending Review', 'Completed'];
+
+  // Index 0 = 'All' (no filter, status: null). Rest map 1:1 to the backend
+  // enum values in ClientDesignProjectStatus.
+  final _tabs = [
+    'All',
+    'Pending',
+    'In Progress',
+    'SMM Review',
+    'Client Review',
+    'Revision',
+    'Completed',
+    'Cancelled',
+  ];
+
+  /// Returns the exact backend status string for tab [index], or `null`
+  /// for the 'All' tab (no filter).
+  String? _statusForTab(int index) => index == 0 ? null : _tabs[index];
 
   @override
   void initState() {
@@ -34,18 +50,13 @@ class _ClientProjectsPageState extends State<ClientProjectsPage> {
     });
   }
 
-  List<ClientDesignProject> _filtered(
-      List<ClientDesignProject> all, int tab) {
-    switch (tab) {
-      case 1:
-        return all.where((p) => p.isInProgress).toList();
-      case 2:
-        return all.where((p) => p.isPendingReview).toList();
-      case 3:
-        return all.where((p) => p.isCompleted || p.isApproved).toList();
-      default:
-        return all;
-    }
+  /// Called when the user taps a tab — sends the request to the backend
+  /// with `?status=<value>` so the API does the filtering.
+  void _onTabTap(int index) {
+    setState(() => _tab = index);
+    context
+        .read<ClientDesignProjectProvider>()
+        .fetchProjects(status: _statusForTab(index));
   }
 
   @override
@@ -66,7 +77,7 @@ class _ClientProjectsPageState extends State<ClientProjectsPage> {
                   return Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: GestureDetector(
-                      onTap: () => setState(() => _tab = e.key),
+                      onTap: () => _onTabTap(e.key),
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 200),
                         padding: const EdgeInsets.symmetric(
@@ -111,9 +122,9 @@ class _ClientProjectsPageState extends State<ClientProjectsPage> {
   }
 
   Widget _buildBody(
-    ApiResponse<List<ClientDesignProject>> state,
-    ClientDesignProjectProvider provider,
-  ) {
+      ApiResponse<List<ClientDesignProject>> state,
+      ClientDesignProjectProvider provider,
+      ) {
     if (state.isLoading) {
       return const _LoadingView();
     }
@@ -121,23 +132,26 @@ class _ClientProjectsPageState extends State<ClientProjectsPage> {
     if (state.isError) {
       return _ErrorView(
         message: state.message ?? 'Something went wrong.',
-        onRetry: () => provider.fetchProjects(),
+        onRetry: () => provider.fetchProjects(status: _statusForTab(_tab)),
       );
     }
 
-    final projects = _filtered(provider.allProjects, _tab);
+    // Filtering now happens on the backend via ?status=... (see _onTabTap),
+    // so we just render whatever the provider currently holds.
+    final projects = provider.allProjects;
 
     if (projects.isEmpty) {
       return _EmptyView(
         message: _tab == 0
             ? 'No design projects yet.'
-            : 'No projects in this category.',
+            : 'No projects with status "${_tabs[_tab]}".',
       );
     }
 
     return RefreshIndicator(
       color: AppColors.clientColor,
-      onRefresh: () => provider.fetchProjects(silent: true),
+      onRefresh: () =>
+          provider.fetchProjects(status: _statusForTab(_tab), silent: true),
       child: ListView.builder(
         padding: const EdgeInsets.symmetric(horizontal: 20),
         itemCount: projects.length,
@@ -318,9 +332,9 @@ class _ProjectCard extends StatelessWidget {
       '${dt.day} ${_month(dt.month)} ${dt.year}';
 
   String _month(int m) => const [
-        '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-      ][m];
+    '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+  ][m];
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -379,7 +393,7 @@ class _ProjectDetailSheetState extends State<_ProjectDetailSheet> {
                 // ── Content ───────────────────────────────────────────────
                 Expanded(
                   child: _buildContent(
-                    context, provider, detail, review, scrollCtrl),
+                      context, provider, detail, review, scrollCtrl),
                 ),
               ],
             ),
@@ -390,12 +404,12 @@ class _ProjectDetailSheetState extends State<_ProjectDetailSheet> {
   }
 
   Widget _buildContent(
-    BuildContext context,
-    ClientDesignProjectProvider provider,
-    ApiResponse<ClientDesignProject> detail,
-    ApiResponse<ClientDesignProject> review,
-    ScrollController scrollCtrl,
-  ) {
+      BuildContext context,
+      ClientDesignProjectProvider provider,
+      ApiResponse<ClientDesignProject> detail,
+      ApiResponse<ClientDesignProject> review,
+      ScrollController scrollCtrl,
+      ) {
     if (detail.isLoading) {
       return const _LoadingView();
     }
@@ -562,11 +576,11 @@ class _ProjectDetailSheetState extends State<_ProjectDetailSheet> {
                   color: AppColors.textPrimary)),
           const SizedBox(height: 8),
           ...project.files.map(
-            (f) => Padding(
+                (f) => Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: CommonCard(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 child: Row(
                   children: [
                     Container(
@@ -642,7 +656,7 @@ class _ProjectDetailSheetState extends State<_ProjectDetailSheet> {
                           fontSize: 13, color: AppColors.textPrimary),
                       decoration: InputDecoration(
                         hintText:
-                            'Describe what changes you\'d like...',
+                        'Describe what changes you\'d like...',
                         hintStyle: GoogleFonts.sora(
                             fontSize: 12,
                             color: AppColors.textMuted),
@@ -679,64 +693,64 @@ class _ProjectDetailSheetState extends State<_ProjectDetailSheet> {
             // Action buttons
             review.isLoading
                 ? const Center(
-                    child: Padding(
-                    padding: EdgeInsets.symmetric(vertical: 12),
-                    child: CircularProgressIndicator(),
-                  ))
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: CircularProgressIndicator(),
+                ))
                 : Row(
-                    children: [
-                      // Approve button
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: () => _approve(context, provider, project.id),
-                          child: Container(
-                            padding:
-                                const EdgeInsets.symmetric(vertical: 14),
-                            decoration: BoxDecoration(
-                              gradient: AppColors.clientGradient,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Center(
-                              child: Text('Approve',
-                                  style: GoogleFonts.sora(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.white)),
-                            ),
-                          ),
-                        ),
+              children: [
+                // Approve button
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => _approve(context, provider, project.id),
+                    child: Container(
+                      padding:
+                      const EdgeInsets.symmetric(vertical: 14),
+                      decoration: BoxDecoration(
+                        gradient: AppColors.clientGradient,
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      const SizedBox(width: 10),
-                      // Request changes button
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: () => _toggleChanges(
-                              context, provider, project.id),
-                          child: Container(
-                            padding:
-                                const EdgeInsets.symmetric(vertical: 14),
-                            decoration: BoxDecoration(
-                              color: AppColors.error.withOpacity(0.08),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                  color: AppColors.error.withOpacity(0.4)),
-                            ),
-                            child: Center(
-                              child: Text(
-                                _showFeedbackField
-                                    ? 'Submit Changes'
-                                    : 'Request Changes',
-                                style: GoogleFonts.sora(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppColors.error),
-                              ),
-                            ),
-                          ),
-                        ),
+                      child: Center(
+                        child: Text('Approve',
+                            style: GoogleFonts.sora(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white)),
                       ),
-                    ],
+                    ),
                   ),
+                ),
+                const SizedBox(width: 10),
+                // Request changes button
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => _toggleChanges(
+                        context, provider, project.id),
+                    child: Container(
+                      padding:
+                      const EdgeInsets.symmetric(vertical: 14),
+                      decoration: BoxDecoration(
+                        color: AppColors.error.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                            color: AppColors.error.withOpacity(0.4)),
+                      ),
+                      child: Center(
+                        child: Text(
+                          _showFeedbackField
+                              ? 'Submit Changes'
+                              : 'Request Changes',
+                          style: GoogleFonts.sora(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.error),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ],
         ],
 
@@ -747,10 +761,10 @@ class _ProjectDetailSheetState extends State<_ProjectDetailSheet> {
 
   /// Approve without feedback
   Future<void> _approve(
-    BuildContext context,
-    ClientDesignProjectProvider provider,
-    String projectId,
-  ) async {
+      BuildContext context,
+      ClientDesignProjectProvider provider,
+      String projectId,
+      ) async {
     final ok = await provider.submitReview(
       projectId: projectId,
       action: 'approved',
@@ -764,10 +778,10 @@ class _ProjectDetailSheetState extends State<_ProjectDetailSheet> {
 
   /// Toggle feedback field; if already visible, submit changes
   Future<void> _toggleChanges(
-    BuildContext context,
-    ClientDesignProjectProvider provider,
-    String projectId,
-  ) async {
+      BuildContext context,
+      ClientDesignProjectProvider provider,
+      String projectId,
+      ) async {
     if (!_showFeedbackField) {
       setState(() => _showFeedbackField = true);
       return;
@@ -796,9 +810,9 @@ class _ProjectDetailSheetState extends State<_ProjectDetailSheet> {
       '${dt.day} ${_month(dt.month)} ${dt.year}';
 
   String _month(int m) => const [
-        '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-      ][m];
+    '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+  ][m];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -878,7 +892,7 @@ class _ReviewSuccessBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = isApproved ? AppColors.success : AppColors.info;
     final icon =
-        isApproved ? Icons.check_circle_rounded : Icons.edit_note_rounded;
+    isApproved ? Icons.check_circle_rounded : Icons.edit_note_rounded;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
@@ -1051,10 +1065,10 @@ class ClientReportsPage extends StatelessWidget {
           const SizedBox(height: 20),
 
           Text('Platform Breakdown',
-                  style: GoogleFonts.sora(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary))
+              style: GoogleFonts.sora(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary))
               .animate(delay: 100.ms)
               .fadeIn(),
 
@@ -1098,7 +1112,7 @@ class ClientReportsPage extends StatelessWidget {
                               value: p.$5,
                               backgroundColor: AppColors.border,
                               valueColor:
-                                  AlwaysStoppedAnimation<Color>(p.$4),
+                              AlwaysStoppedAnimation<Color>(p.$4),
                               minHeight: 5,
                             ),
                           ),
@@ -1205,7 +1219,7 @@ class _ReportStat extends StatelessWidget {
                 color: Colors.white)),
         Text(label,
             style:
-                GoogleFonts.sora(fontSize: 11, color: Colors.white70)),
+            GoogleFonts.sora(fontSize: 11, color: Colors.white70)),
       ],
     );
   }

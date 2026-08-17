@@ -59,15 +59,19 @@ class ClientDesignProjectProvider extends ChangeNotifier {
 
   /// Loads all design projects from the API.
   ///
+  /// [status] — optional filter, e.g. 'Pending', 'In Progress', 'SMM Review',
+  /// 'Client Review', 'Revision', 'Completed', 'Cancelled'. Pass `null` (or
+  /// omit) to load all projects.
+  ///
   /// Set [silent] to true to skip the loading indicator (e.g. pull-to-refresh).
-  Future<void> fetchProjects({bool silent = false}) async {
+  Future<void> fetchProjects({String? status, bool silent = false}) async {
     if (!silent) {
       _listState = ApiResponse.loading();
       notifyListeners();
     }
 
     try {
-      final projects = await _repo.fetchProjects();
+      final projects = await _repo.fetchProjects(status: status);
       _listState = ApiResponse.success(projects);
     } on AppException catch (e) {
       _listState = ApiResponse.error(

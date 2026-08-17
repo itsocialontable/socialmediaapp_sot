@@ -1,6 +1,64 @@
 // lib/model/client_design_project_model.dart
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Status enum (mirrors backend enum)
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum ClientDesignProjectStatus {
+  pending,
+  inProgress,
+  smmReview,
+  clientReview,
+  revision,
+  completed,
+  cancelled,
+}
+
+extension ClientDesignProjectStatusX on ClientDesignProjectStatus {
+  /// Exact string value as used by the backend.
+  String get value {
+    switch (this) {
+      case ClientDesignProjectStatus.pending:
+        return 'Pending';
+      case ClientDesignProjectStatus.inProgress:
+        return 'In Progress';
+      case ClientDesignProjectStatus.smmReview:
+        return 'SMM Review';
+      case ClientDesignProjectStatus.clientReview:
+        return 'Client Review';
+      case ClientDesignProjectStatus.revision:
+        return 'Revision';
+      case ClientDesignProjectStatus.completed:
+        return 'Completed';
+      case ClientDesignProjectStatus.cancelled:
+        return 'Cancelled';
+    }
+  }
+
+  static ClientDesignProjectStatus fromString(String value) {
+    switch (value.trim().toLowerCase()) {
+      case 'pending':
+        return ClientDesignProjectStatus.pending;
+      case 'in progress':
+      case 'inprogress':
+        return ClientDesignProjectStatus.inProgress;
+      case 'smm review':
+        return ClientDesignProjectStatus.smmReview;
+      case 'client review':
+        return ClientDesignProjectStatus.clientReview;
+      case 'revision':
+        return ClientDesignProjectStatus.revision;
+      case 'completed':
+        return ClientDesignProjectStatus.completed;
+      case 'cancelled':
+        return ClientDesignProjectStatus.cancelled;
+      default:
+        return ClientDesignProjectStatus.pending;
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Sub-models
 // ─────────────────────────────────────────────────────────────────────────────
 

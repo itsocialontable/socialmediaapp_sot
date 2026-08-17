@@ -21,10 +21,21 @@ class ClientDesignProjectRepository {
   // ─────────────────────────────────────────────────────────────────────────
 
   /// Fetches all design projects for the authenticated client.
+  ///
+  /// [status] — optional filter, e.g. 'Pending', 'In Progress',
+  /// 'SMM Review', 'Client Review', 'Revision', 'Completed', 'Cancelled'.
+  /// When provided, it is sent as `?status=<value>` in the request.
+  /// Pass `null` or omit it to fetch all projects (no filter).
+  ///
   /// Returns a [List<ClientDesignProject>] on success.
   /// Throws an [AppException] on any network / server error.
-  Future<List<ClientDesignProject>> fetchProjects() async {
-    final raw = await _api.get('/api/client/design-projects');
+  Future<List<ClientDesignProject>> fetchProjects({String? status}) async {
+    final raw = await _api.get(
+      '/api/client/design-projects',
+      queryParams: (status != null && status.trim().isNotEmpty)
+          ? {'status': status}
+          : null,
+    );
 
     _assertSuccess(raw, 'Failed to fetch design projects.');
 
@@ -148,7 +159,7 @@ class ClientDesignProjectRepository {
     if (!validActions.contains(req.action)) {
       throw ValidationException(
         'Invalid action "${req.action}". '
-        'Must be one of: ${validActions.join(", ")}.',
+            'Must be one of: ${validActions.join(", ")}.',
       );
     }
     if (req.action == 'changes_requested' && req.feedback.trim().isEmpty) {
@@ -160,9 +171,9 @@ class ClientDesignProjectRepository {
 
   /// Returns a minimal stub when the server doesn't echo back the full project.
   ClientDesignProject _stubProjectFromReview(
-    String id,
-    ClientDesignProjectReviewRequest req,
-  ) {
+      String id,
+      ClientDesignProjectReviewRequest req,
+      ) {
     return ClientDesignProject(
       id: id,
       title: '',

@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData, FilteringTextInputFormatter, TextInputFormatter, LengthLimitingTextInputFormatter;
 import 'package:google_fonts/google_fonts.dart';
@@ -5,6 +7,9 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/network/api_service.dart';
@@ -341,66 +346,17 @@ class _AddClientSheetState extends State<_AddClientSheet> {
         'platforms': _selectedPlatforms.toList(),
       });
 
-      // Try to pull the newly created client's id out of the response so we
-      // can immediately check/generate their invoice via
-      // GET /api/admin/invoices/:clientId
-      final clientId = _extractClientId(res);
-      final clientName = _nameCtrl.text.trim();
-
+      final msg = (res['msg'] ?? res['message'] ?? 'Client created successfully').toString();
       if (mounted) {
         Navigator.pop(context); // close the "Add Client" sheet
         widget.onCreated();     // refresh the clients list behind it
-
-        if (clientId != null && clientId.isNotEmpty) {
-          // Show a small progress dialog that fetches/generates the invoice
-          // for the client we just created, then reports success in the UI.
-          showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (_) => _ClientInvoiceStatusDialog(
-              clientId: clientId,
-              clientName: clientName,
-              budget: _budgetCtrl.text.trim(),
-            ),
-          );
-        } else {
-          // Fallback: couldn't resolve a client id from the create response,
-          // just show the normal success toast.
-          final msg = (res['msg'] ?? res['message'] ?? 'Client created successfully').toString();
-          _showSuccessSnack(context, msg);
-        }
+        _showSuccessSnack(context, msg);
       }
     } catch (e) {
       setState(() { _errorMessage = _cleanErr(e.toString()); });
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
-  }
-
-  /// Best-effort extraction of the created client's id from various possible
-  /// response shapes returned by POST /api/user/create.
-  String? _extractClientId(Map<String, dynamic> res) {
-    dynamic pick(Map<String, dynamic> m) => m['_id'] ?? m['id'] ?? m['userId'] ?? m['clientId'];
-
-    final data = res['data'];
-    if (data is Map<String, dynamic>) {
-      final user = data['user'] ?? data['client'];
-      if (user is Map<String, dynamic>) {
-        final id = pick(user);
-        if (id != null) return id.toString();
-      }
-      final id = pick(data);
-      if (id != null) return id.toString();
-    }
-
-    final user = res['user'] ?? res['client'];
-    if (user is Map<String, dynamic>) {
-      final id = pick(user);
-      if (id != null) return id.toString();
-    }
-
-    final id = pick(res);
-    return id?.toString();
   }
 
   @override
@@ -818,7 +774,7 @@ class _AdminTeamPageState extends State<AdminTeamPage> {
       'Graphic Designer': 'Graphic Designer',
       'Video Editor': 'Video Editor',
       'Content Writer': 'Content Writer',
-      'Smm': 'SMM Executive',
+      'Developer': 'Developer',
       'Support': 'Support Executive',
       'SEO Specialist': 'SEO Specialist',
     };
@@ -995,7 +951,7 @@ class _AddMemberSheetState extends State<_AddMemberSheet> {
     'Graphic Designer': 'Graphic Designer',
     'Video Editor': 'Video Editor',
     'Content Writer': 'Content Writer',
-    'Smm': 'SMM Executive',
+    'Developer': 'Developer',
     'Support': 'Support Executive',
     'SEO Specialist': 'SEO Specialist',
   };
@@ -1151,7 +1107,7 @@ class _EditMemberSheetState extends State<_EditMemberSheet> {
     'Graphic Designer': 'Graphic Designer',
     'Video Editor': 'Video Editor',
     'Content Writer': 'Content Writer',
-    'Smm': 'SMM Executive',
+    'Developer': 'Developer',
     'Support': 'Support Executive',
     'SEO Specialist': 'SEO Specialist',
   };
@@ -1507,338 +1463,631 @@ String formatInvoiceDate(String raw) {
   return DateFormat('d MMM yyyy').format(parsed.toLocal());
 }
 
-String? invoiceFileUrl(Map<String, dynamic> node) {
-  final rawUrl = invoiceField(node, [
-    'pdfUrl', 'invoiceUrl', 'fileUrl', 'downloadUrl', 'receiptUrl', 'url',
-    'invoicePdf', 'invoicePath', 'filePath', 'path', 'attachment', 'file', 'link',
-  ]);
-  if (rawUrl == null) {
-    // Nothing matched our known key names — dump the raw keys so it's easy
-    // to spot the actual field name the backend used and add it above.
-    debugPrint('[invoice] no file-url field found on invoice node. keys=${node.keys.toList()}');
-    return null;
+// NOTE: the invoice API response never includes a file URL — confirmed via
+// this exact debug log while diagnosing: keys=[_id, agencyId, client,
+// createdBy, invoiceNumber, items, subtotal, taxPercent, taxAmount,
+// discount, totalAmount, currency, dueDate, status, notes, issueDate,
+// createdAt, updatedAt, __v]. So View/Download/Share below all work off
+// that JSON directly and build the PDF on-device (see
+// _buildInvoicePdfBytes) instead of fetching a file.
+
+// Like invoiceField, but returns the raw (untyped) value — needed for the
+// `items` array and numeric fields (qty/rate/amount/subtotal/tax/total)
+// where we don't want an early toString().
+dynamic invoiceRawField(Map<String, dynamic> node, List<String> keys) {
+  for (final k in keys) {
+    final v = node[k];
+    if (v != null) return v;
   }
-  return rawUrl.startsWith('http')
-      ? rawUrl
-      : '${AppConstants.baseUrl}${rawUrl.startsWith('/') ? '' : '/'}$rawUrl';
+  return null;
 }
 
-/// Downloads the invoice PDF and opens it locally. Returns an error message
-/// on failure, or null on success.
-///
-/// This intentionally does NOT fall back to url_launcher / an external
-/// browser tab. Two things break that approach on this backend:
-///  1. The API base URL is a free ngrok tunnel, and free tunnels show an
-///     interstitial "You are about to visit..." warning page to any request
-///     that doesn't send the `ngrok-skip-browser-warning` header. Our Dio
-///     client sends that header (see DioClient), but a plain browser tab
-///     does not — so the "download" just opens a warning page instead of
-///     the PDF.
-///  2. The invoice endpoint likely requires the admin's auth token too,
-///     which an external browser tab also won't have.
-/// So the download always goes through ApiService's Dio instance (which
-/// attaches the auth token + ngrok header) and the file is saved + opened
-/// purely with Flutter packages: path_provider (find a writable app
-/// directory) + open_filex (open the saved PDF). If that fails, we surface
-/// the error instead of silently opening an external link.
-Future<String?> downloadInvoicePdf({required String url, required String invoiceId}) async {
+num? invoiceNum(dynamic v) {
+  if (v == null) return null;
+  if (v is num) return v;
+  return num.tryParse(v.toString());
+}
+
+String invoiceMoney(num? v) => '₹${(v ?? 0).toStringAsFixed(2)}';
+
+// The `pdf` package's default fonts (Helvetica) have no glyph for ₹ — see
+// the "Unable to find a font to draw ₹" warning. Rather than embedding a
+// custom Unicode font just for one symbol, PDF text uses "Rs." instead.
+// On-screen (Flutter's own text rendering) keeps the real ₹ symbol.
+String pdfMoney(num? v) => 'Rs. ${(v ?? 0).toStringAsFixed(2)}';
+
+/// Local file path (in the app's documents dir) where a given invoice's PDF
+/// is/will be cached, keyed by invoiceId.
+Future<String> _invoiceLocalPath(String invoiceId) async {
+  final dir = await getApplicationDocumentsDirectory();
+  final safeId = invoiceId.replaceAll(RegExp(r'[^\w\-]'), '_');
+  return '${dir.path}/invoice_$safeId.pdf';
+}
+
+// Builds a printable invoice PDF entirely on-device from the invoice JSON
+// (items, subtotal, tax, discount, total, dueDate, notes, etc.) using the
+// `pdf` package. The backend never returns a file URL for invoices — see
+// the `keys=[...]` debug line in invoiceFileUrl below — so there is nothing
+// to download; the PDF itself is generated here, purely Flutter-side.
+Future<Uint8List> _buildInvoicePdfBytes(Map<String, dynamic> invoice, {String? clientName}) async {
+  final doc = pw.Document();
+
+  final invoiceId = invoiceField(invoice, ['invoiceNumber', 'invoiceNo', 'number', '_id', 'id']) ?? '';
+  final status = invoiceField(invoice, ['status']) ?? 'Draft';
+  final dueDate = invoiceField(invoice, ['dueDate', 'due_date']);
+  final issueDate = invoiceField(invoice, ['issueDate', 'createdAt', 'date']);
+  final notes = invoiceField(invoice, ['notes', 'note']);
+
+  final rawItems = invoiceRawField(invoice, ['items']);
+  final items = (rawItems is List) ? rawItems.whereType<Map<String, dynamic>>().toList() : <Map<String, dynamic>>[];
+  final itemDescriptions = items
+      .map((it) => invoiceField(it, ['description', 'item', 'name']))
+      .whereType<String>()
+      .where((s) => s.trim().isNotEmpty)
+      .toList();
+  // The description entered on the "Generate Invoice" form is stored per
+  // line item on the backend — surfaced here as the invoice's note rather
+  // than as its own table column (see the on-screen view for the same
+  // treatment).
+  final combinedNote = itemDescriptions.isNotEmpty ? itemDescriptions.join('; ') : notes;
+
+  final subtotal = invoiceNum(invoiceRawField(invoice, ['subtotal', 'subTotal'])) ??
+      items.fold<num>(0, (sum, it) => sum + (invoiceNum(invoiceRawField(it, ['amount'])) ?? 0));
+  final taxPercent = invoiceNum(invoiceRawField(invoice, ['taxRate', 'taxPercent', 'tax']));
+  final taxAmount = invoiceNum(invoiceRawField(invoice, ['taxAmount'])) ??
+      (taxPercent != null ? subtotal * taxPercent / 100 : null);
+  final discount = invoiceNum(invoiceRawField(invoice, ['discount', 'discountAmount']));
+  final total = invoiceNum(invoiceRawField(invoice, ['totalAmount', 'amount', 'total', 'grandTotal'])) ??
+      (subtotal + (taxAmount ?? 0) - (discount ?? 0));
+
+  doc.addPage(
+    pw.Page(
+      pageFormat: PdfPageFormat.a4,
+      margin: const pw.EdgeInsets.all(32),
+      build: (context) => pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text('Invoice $invoiceId', style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
+              pw.Container(
+                padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: pw.BoxDecoration(border: pw.Border.all(width: 0.6), borderRadius: pw.BorderRadius.circular(12)),
+                child: pw.Text(status, style: const pw.TextStyle(fontSize: 10)),
+              ),
+            ],
+          ),
+          if (clientName != null) pw.Padding(padding: const pw.EdgeInsets.only(top: 4), child: pw.Text('Bill to: $clientName', style: const pw.TextStyle(fontSize: 11))),
+          if (issueDate != null) pw.Text('Issued: ${formatInvoiceDate(issueDate)}', style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
+          pw.SizedBox(height: 16),
+          pw.Table(
+            border: pw.TableBorder(bottom: pw.BorderSide(color: PdfColors.grey400), horizontalInside: pw.BorderSide(color: PdfColors.grey300)),
+            columnWidths: const {0: pw.FlexColumnWidth(1), 1: pw.FlexColumnWidth(2)},
+            children: [
+              pw.TableRow(children: [
+                pw.Padding(padding: const pw.EdgeInsets.symmetric(vertical: 6), child: pw.Text('Qty', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10))),
+                pw.Padding(padding: const pw.EdgeInsets.symmetric(vertical: 6), child: pw.Text('Amount', textAlign: pw.TextAlign.right, style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10))),
+              ]),
+              for (final it in items)
+                pw.TableRow(children: [
+                  pw.Padding(padding: const pw.EdgeInsets.symmetric(vertical: 6), child: pw.Text('${invoiceNum(invoiceRawField(it, ['quantity', 'qty'])) ?? 1}', style: const pw.TextStyle(fontSize: 10))),
+                  pw.Padding(
+                    padding: const pw.EdgeInsets.symmetric(vertical: 6),
+                    child: pw.Text(
+                      pdfMoney(invoiceNum(invoiceRawField(it, ['amount'])) ??
+                          ((invoiceNum(invoiceRawField(it, ['quantity', 'qty'])) ?? 1) * (invoiceNum(invoiceRawField(it, ['rate'])) ?? 0))),
+                      textAlign: pw.TextAlign.right,
+                      style: const pw.TextStyle(fontSize: 10),
+                    ),
+                  ),
+                ]),
+            ],
+          ),
+          pw.SizedBox(height: 12),
+          pw.Align(
+            alignment: pw.Alignment.centerRight,
+            child: pw.SizedBox(
+              width: 220,
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                children: [
+                  _pdfSummaryRow('Subtotal', pdfMoney(subtotal)),
+                  if (taxAmount != null) _pdfSummaryRow(taxPercent != null ? 'Tax (${taxPercent.toStringAsFixed(taxPercent % 1 == 0 ? 0 : 1)}%)' : 'Tax', pdfMoney(taxAmount)),
+                  if (discount != null && discount != 0) _pdfSummaryRow('Discount', '-${pdfMoney(discount)}'),
+                  pw.Divider(),
+                  _pdfSummaryRow('Total', pdfMoney(total), bold: true),
+                ],
+              ),
+            ),
+          ),
+          if (dueDate != null) pw.Padding(padding: const pw.EdgeInsets.only(top: 16), child: pw.Text('Due date: ${formatInvoiceDate(dueDate)}', style: const pw.TextStyle(fontSize: 10))),
+          if (combinedNote != null && combinedNote.isNotEmpty)
+            pw.Padding(padding: const pw.EdgeInsets.only(top: 4), child: pw.Text('Note: $combinedNote', style: const pw.TextStyle(fontSize: 10))),
+        ],
+      ),
+    ),
+  );
+
+  return doc.save();
+}
+
+pw.Widget _pdfSummaryRow(String label, String value, {bool bold = false}) {
+  final style = pw.TextStyle(fontSize: bold ? 12 : 10, fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal);
+  return pw.Padding(
+    padding: const pw.EdgeInsets.symmetric(vertical: 2),
+    child: pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+      pw.Text(label, style: style),
+      pw.Text(value, style: style),
+    ]),
+  );
+}
+
+/// Generates (or regenerates, so it always reflects the latest data) the
+/// on-device invoice PDF and returns its local file path.
+Future<String> _ensureInvoicePdfGenerated(Map<String, dynamic> invoice, String invoiceId, {String? clientName}) async {
+  final savePath = await _invoiceLocalPath(invoiceId);
+  final bytes = await _buildInvoicePdfBytes(invoice, clientName: clientName);
+  await File(savePath).writeAsBytes(bytes, flush: true);
+  return savePath;
+}
+
+/// Generates the invoice PDF on-device and opens it. Returns an error
+/// message on failure, or null on success. Purely Flutter-side
+/// (pdf + path_provider + open_filex) — no download API involved.
+Future<String?> downloadInvoicePdf({required Map<String, dynamic> invoice, required String invoiceId, String? clientName}) async {
   try {
-    final dir = await getApplicationDocumentsDirectory();
-    final safeId = invoiceId.replaceAll(RegExp(r'[^\w\-]'), '_');
-    final savePath = '${dir.path}/invoice_$safeId.pdf';
-
-    await ApiService.rawDio.download(url, savePath);
-
+    final savePath = await _ensureInvoicePdfGenerated(invoice, invoiceId, clientName: clientName);
     final result = await OpenFilex.open(savePath);
     if (result.type != ResultType.done) {
-      return 'Downloaded, but could not open the file (${result.message}).';
+      return 'Saved, but could not open the file (${result.message}).';
     }
     return null;
   } catch (e) {
-    return 'Could not download the invoice. Please try again.';
+    return 'Could not generate the invoice PDF. Please try again.';
   }
 }
 
-// CLIENT CREATED → INVOICE STATUS DIALOG
-// Shown right after a client is created.
-// 1) POST /api/admin/invoices   body: { clientId, items: [{ rate }] }
-//    → generates the invoice. `rate` = the Budget (INR) entered on the
-//    Add Client sheet, forwarded through as the invoice line item's rate.
-// 2) GET  /api/admin/invoices/client/:clientId     → fetches all invoices
-//    for this client and renders them as a list right below, in this dialog.
-// ─────────────────────────────────────────
-class _ClientInvoiceStatusDialog extends StatefulWidget {
-  final String clientId;
-  final String clientName;
-  // Budget entered on the "Add Client" sheet — sent to the invoice-generate
-  // API as the rate of the (single) invoice line item.
-  final String? budget;
-  const _ClientInvoiceStatusDialog({required this.clientId, required this.clientName, this.budget});
-
-  @override
-  State<_ClientInvoiceStatusDialog> createState() => _ClientInvoiceStatusDialogState();
+/// Generates the invoice PDF on-device and hands it to the native share
+/// sheet. Returns an error message on failure, or null on success. Purely
+/// Flutter-side (pdf + share_plus) — no share API involved.
+Future<String?> shareInvoicePdf({required Map<String, dynamic> invoice, required String invoiceId, String? clientName}) async {
+  try {
+    final savePath = await _ensureInvoicePdfGenerated(invoice, invoiceId, clientName: clientName);
+    await Share.shareXFiles(
+      [XFile(savePath)],
+      text: clientName != null ? 'Invoice for $clientName' : 'Invoice',
+    );
+    return null;
+  } catch (e) {
+    return 'Could not share the invoice. Please try again.';
+  }
 }
 
-class _ClientInvoiceStatusDialogState extends State<_ClientInvoiceStatusDialog> {
+class _InvoiceQuickActionSheet extends StatefulWidget {
+  final String clientId;
+  final String clientName;
+  final String? budget;
+  final Color accent;
+  const _InvoiceQuickActionSheet({
+    required this.clientId,
+    required this.clientName,
+    required this.budget,
+    required this.accent,
+  });
+
+  @override
+  State<_InvoiceQuickActionSheet> createState() => _InvoiceQuickActionSheetState();
+}
+
+class _InvoiceQuickActionSheetState extends State<_InvoiceQuickActionSheet> {
   final _apiService = ApiService();
+  final _descriptionCtrl = TextEditingController();
 
-  bool _isLoadingInvoice = true;
-  bool _invoiceFailed = false;
-  String? _errorMessage;
-
-  // List of invoices for this client (GET /api/admin/invoices/client/:clientId)
-  List<Map<String, dynamic>> _invoices = [];
-  bool _isOpeningDownload = false;
-  String? _downloadingInvoiceId;
+  bool _isLoading = true;   // initial "does an invoice already exist" check
+  bool _isSubmitting = false;
+  bool _isBusyAction = false; // view/download/share in progress
+  String? _errorMsg;
+  Map<String, dynamic>? _invoice; // the existing (or just-generated) invoice
 
   @override
   void initState() {
     super.initState();
-    _generateAndFetchInvoices();
+    _fetchExisting();
   }
 
-  // Step A: POST /api/admin/invoices
-  // body: { clientId, items: [{ rate }] } → generate invoice
-  // The "rate" is the Budget (INR) value entered on the Add Client sheet —
-  // that's what goes into the invoice's single line item as its rate.
-  Future<void> _generateInvoice() async {
-    await _apiService.post(AppConstants.adminInvoices, body: {
-      'clientId': widget.clientId,
-      'items': [
-        {
-          'rate': widget.budget ?? '',
-        },
-      ],
-    });
+  @override
+  void dispose() {
+    _descriptionCtrl.dispose();
+    super.dispose();
   }
 
-  // Step B: GET /api/admin/invoices/client/:clientId → list all invoices
-  Future<void> _fetchInvoiceList() async {
-    final res = await _apiService.get('${AppConstants.adminInvoicesByClient}/${widget.clientId}');
-    _parseInvoiceList(res);
-  }
-
-  Future<void> _generateAndFetchInvoices() async {
+  Future<void> _fetchExisting() async {
+    setState(() { _isLoading = true; _errorMsg = null; });
     try {
-      await _generateInvoice();
-    } catch (e) {
-      // Generation failing shouldn't block showing already-existing invoices,
-      // so we swallow it here and let the list fetch decide the final state.
-    }
-    try {
-      await _fetchInvoiceList();
-      if (mounted) setState(() => _isLoadingInvoice = false);
-    } catch (e) {
+      final res = await _apiService.get('${AppConstants.adminInvoicesByClient}/${widget.clientId}');
+      final invoices = parseInvoiceList(res);
       if (mounted) {
         setState(() {
-          _isLoadingInvoice = false;
-          _invoiceFailed = true;
-          _errorMessage = _cleanErr(e.toString());
+          _invoice = invoices.isNotEmpty ? invoices.first : null;
+          _isLoading = false;
         });
       }
+    } catch (e) {
+      if (mounted) setState(() { _errorMsg = _cleanErr(e.toString()); _isLoading = false; });
     }
   }
 
-  void _parseInvoiceList(Map<String, dynamic> res) {
-    _invoices = parseInvoiceList(res);
+  Future<void> _generate() async {
+    if (_descriptionCtrl.text.trim().isEmpty) {
+      setState(() => _errorMsg = 'Please enter a description');
+      return;
+    }
+    setState(() { _isSubmitting = true; _errorMsg = null; });
+    try {
+      await _apiService.post(AppConstants.adminInvoices, body: {
+        'clientId': widget.clientId,
+        'items': [
+          {
+            'description': _descriptionCtrl.text.trim(),
+            'rate': widget.budget ?? '',
+          },
+        ],
+      });
+      // Re-fetch so we have the full invoice object (id, fileUrl, computed
+      // amounts, etc.) exactly as the backend generated it.
+      await _fetchExisting();
+    } catch (e) {
+      if (mounted) setState(() => _errorMsg = _cleanErr(e.toString()));
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
   }
 
-  String? _invoiceField(Map<String, dynamic> node, List<String> keys) => invoiceField(node, keys);
+  String get _invoiceId =>
+      invoiceField(_invoice ?? const {}, ['invoiceNumber', 'invoiceNo', 'number', '_id', 'id']) ?? '';
 
-  String? _invoiceFileUrl(Map<String, dynamic> node) => invoiceFileUrl(node);
+  Future<void> _handleView() async {
+    if (_invoice == null) return;
+    showDialog(
+      context: context,
+      builder: (_) => _InvoiceViewSheet(invoice: _invoice!, accent: widget.accent),
+    );
+  }
 
-  Future<void> _downloadInvoice(String url, String invoiceId) async {
-    setState(() {
-      _isOpeningDownload = true;
-      _downloadingInvoiceId = invoiceId;
-    });
-    final err = await downloadInvoicePdf(url: url, invoiceId: invoiceId);
+  Future<void> _handleDownload() async {
+    if (_invoice == null) return;
+    setState(() => _isBusyAction = true);
+    final err = await downloadInvoicePdf(invoice: _invoice!, invoiceId: _invoiceId, clientName: widget.clientName);
     if (mounted) {
+      setState(() => _isBusyAction = false);
+      _showSuccessSnack(context, err ?? 'Downloaded successfully.');
+    }
+  }
+
+  Future<void> _handleShare() async {
+    if (_invoice == null) return;
+    setState(() => _isBusyAction = true);
+    final err = await shareInvoicePdf(invoice: _invoice!, invoiceId: _invoiceId, clientName: widget.clientName);
+    if (mounted) {
+      setState(() => _isBusyAction = false);
       if (err != null) _showSuccessSnack(context, err);
-      setState(() {
-        _isOpeningDownload = false;
-        _downloadingInvoiceId = null;
-      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final accent = widget.accent;
+    final bottom = MediaQuery.of(context).viewInsets.bottom;
+
+    return Container(
+      margin: EdgeInsets.only(bottom: bottom),
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        border: Border(top: BorderSide(color: AppColors.border)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(width: 40, height: 4, decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(2))),
+              ),
+              const SizedBox(height: 16),
+              Row(children: [
+                Icon(Icons.receipt_long_rounded, size: 18, color: accent),
+                const SizedBox(width: 8),
+                Text('Invoice', style: GoogleFonts.sora(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+              ]),
+              const SizedBox(height: 16),
+              if (_isLoading)
+                Center(child: Padding(padding: const EdgeInsets.symmetric(vertical: 24), child: CircularProgressIndicator(strokeWidth: 2, color: accent)))
+              else if (_invoice != null)
+                _buildExistingInvoiceActions(accent)
+              else
+                _buildGenerateForm(accent),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGenerateForm(Color accent) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('No invoice generated for this client yet.', style: GoogleFonts.sora(fontSize: 12.5, color: AppColors.textSecondary)),
+        const SizedBox(height: 16),
+        Text('Description', style: GoogleFonts.sora(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+        const SizedBox(height: 6),
+        TextField(
+          controller: _descriptionCtrl,
+          maxLines: 2,
+          style: GoogleFonts.sora(fontSize: 13, color: AppColors.textPrimary),
+          decoration: InputDecoration(
+            hintText: 'e.g. Social media management — August',
+            hintStyle: GoogleFonts.sora(fontSize: 12.5, color: AppColors.textMuted),
+            filled: true,
+            fillColor: AppColors.background,
+            contentPadding: const EdgeInsets.all(12),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: accent)),
+          ),
+        ),
+        const SizedBox(height: 14),
+        Text('Amount', style: GoogleFonts.sora(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+        const SizedBox(height: 6),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppColors.background,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Text(
+            (widget.budget != null && widget.budget!.isNotEmpty) ? '₹${widget.budget}' : 'Not set',
+            style: GoogleFonts.sora(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text('This is the Budget entered when the client was added.', style: GoogleFonts.sora(fontSize: 10.5, color: AppColors.textMuted)),
+        ),
+        if (_errorMsg != null) ...[
+          const SizedBox(height: 10),
+          Text(_errorMsg!, style: GoogleFonts.sora(fontSize: 12, color: AppColors.error)),
+        ],
+        const SizedBox(height: 18),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: _isSubmitting ? null : _generate,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: accent,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: _isSubmitting
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : Text('Generate Invoice', style: GoogleFonts.sora(fontSize: 13.5, fontWeight: FontWeight.w700, color: Colors.white)),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildExistingInvoiceActions(Color accent) {
+    final invoiceId = invoiceField(_invoice!, ['invoiceNumber', 'invoiceNo', 'number', '_id', 'id']);
+    final amount = invoiceField(_invoice!, ['totalAmount', 'amount', 'total']);
+    final status = invoiceField(_invoice!, ['status']) ?? 'generated';
+    final date = invoiceField(_invoice!, ['createdAt', 'date', 'issueDate']);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (invoiceId != null) _InvoiceDetailLine('Invoice No.', invoiceId),
+        if (amount != null) _InvoiceDetailLine('Amount', '₹$amount'),
+        _InvoiceDetailLine('Status', status),
+        if (date != null) _InvoiceDetailLine('Date', formatInvoiceDate(date)),
+        const SizedBox(height: 18),
+        Row(children: [
+          Expanded(child: _InvoiceActionButton(icon: Icons.visibility_outlined, label: 'View', accent: accent, onTap: _isBusyAction ? null : _handleView)),
+          const SizedBox(width: 10),
+          Expanded(child: _InvoiceActionButton(icon: Icons.download_rounded, label: 'Download', accent: accent, onTap: _isBusyAction ? null : _handleDownload, loading: _isBusyAction)),
+          const SizedBox(width: 10),
+          // Expanded(child: _InvoiceActionButton(icon: Icons.share_outlined, label: 'Share', accent: accent, onTap: _isBusyAction ? null : _handleShare)),
+        ]),
+      ],
+    );
+  }
+}
+
+class _InvoiceActionButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color accent;
+  final VoidCallback? onTap;
+  final bool loading;
+  const _InvoiceActionButton({required this.icon, required this.label, required this.accent, required this.onTap, this.loading = false});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: accent.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: accent.withOpacity(0.25)),
+        ),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          loading
+              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : Icon(icon, size: 18, color: Colors.white),
+          const SizedBox(height: 4),
+          Text(label, style: GoogleFonts.sora(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.white)),
+        ]),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────
+// INVOICE VIEW SHEET — structured breakdown
+// Renders items / subtotal / tax / discount / total / due date / notes from
+// the invoice data already fetched — no extra API call.
+// ─────────────────────────────────────────
+class _InvoiceViewSheet extends StatelessWidget {
+  final Map<String, dynamic> invoice;
+  final Color accent;
+  const _InvoiceViewSheet({required this.invoice, required this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    final invoiceId = invoiceField(invoice, ['invoiceNumber', 'invoiceNo', 'number', '_id', 'id']) ?? '';
+    final status = invoiceField(invoice, ['status']) ?? 'Draft';
+    final dueDate = invoiceField(invoice, ['dueDate', 'due_date']);
+    final notes = invoiceField(invoice, ['notes', 'note']);
+
+    final rawItems = invoiceRawField(invoice, ['items']);
+    final items = (rawItems is List) ? rawItems.whereType<Map<String, dynamic>>().toList() : <Map<String, dynamic>>[];
+    // The description entered on the "Generate Invoice" form is stored per
+    // line item on the backend. We surface it as the invoice's note at the
+    // bottom instead of as its own table column.
+    final itemDescriptions = items
+        .map((it) => invoiceField(it, ['description', 'item', 'name']))
+        .whereType<String>()
+        .where((s) => s.trim().isNotEmpty)
+        .toList();
+    final combinedNote = itemDescriptions.isNotEmpty ? itemDescriptions.join('; ') : notes;
+
+    num subtotal = invoiceNum(invoiceRawField(invoice, ['subtotal', 'subTotal'])) ?? 0;
+    if (subtotal == 0 && items.isNotEmpty) {
+      // Fall back to summing item amounts if the backend didn't send a
+      // subtotal directly.
+      subtotal = items.fold<num>(0, (sum, it) {
+        final qty = invoiceNum(invoiceRawField(it, ['quantity', 'qty'])) ?? 1;
+        final rate = invoiceNum(invoiceRawField(it, ['rate'])) ?? 0;
+        final amt = invoiceNum(invoiceRawField(it, ['amount'])) ?? (qty * rate);
+        return sum + amt;
+      });
+    }
+    final taxPercent = invoiceNum(invoiceRawField(invoice, ['taxRate', 'taxPercent', 'tax']));
+    final taxAmount = invoiceNum(invoiceRawField(invoice, ['taxAmount'])) ??
+        (taxPercent != null ? subtotal * taxPercent / 100 : null);
+    final discount = invoiceNum(invoiceRawField(invoice, ['discount', 'discountAmount']));
+    final total = invoiceNum(invoiceRawField(invoice, ['totalAmount', 'amount', 'total', 'grandTotal'])) ??
+        (subtotal + (taxAmount ?? 0) - (discount ?? 0));
+
     return Dialog(
       backgroundColor: AppColors.surface,
+      insetPadding: const EdgeInsets.all(20),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Padding(
-        padding: const EdgeInsets.all(22),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(children: [
-              Container(
-                width: 42, height: 42,
-                decoration: BoxDecoration(gradient: AppColors.adminGradient, borderRadius: BorderRadius.circular(12)),
-                child: const Icon(Icons.person_add_alt_1_rounded, color: Colors.white, size: 20),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Client Added', style: GoogleFonts.sora(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-                  Text(widget.clientName, style: GoogleFonts.sora(fontSize: 12, color: AppColors.textSecondary), overflow: TextOverflow.ellipsis),
-                ]),
-              ),
-            ]),
-            const SizedBox(height: 20),
-
-            // Step 1 — client created (always done, we're here because it succeeded)
-            _InvoiceStepRow(
-              done: true,
-              loading: false,
-              failed: false,
-              title: 'Client account created',
-              subtitle: 'Login credentials generated',
-            ),
-            const SizedBox(height: 12),
-
-            // Step 2 — invoice generation (POST /api/admin/invoices, body: clientId)
-            // + list fetch (GET /api/admin/invoices/client/:clientId)
-            _InvoiceStepRow(
-              done: !_isLoadingInvoice && !_invoiceFailed,
-              loading: _isLoadingInvoice,
-              failed: _invoiceFailed,
-              title: _isLoadingInvoice
-                  ? 'Generating invoice…'
-                  : (_invoiceFailed ? 'Invoice generation pending' : 'Invoice generated'),
-              subtitle: _isLoadingInvoice
-                  ? 'Fetching invoices for this client'
-                  : (_invoiceFailed
-                  ? (_errorMessage ?? 'Could not confirm invoice yet')
-                  : 'Invoice(s) ready for this client'),
-            ),
-
-            if (!_isLoadingInvoice && !_invoiceFailed) ...[
-              const SizedBox(height: 16),
-              if (_invoices.isEmpty)
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                Expanded(child: Text('Invoice $invoiceId', style: GoogleFonts.sora(fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.textPrimary))),
                 Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: AppColors.success.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.success.withOpacity(0.3)),
-                  ),
-                  child: Text('Invoice generated successfully for this client.',
-                      style: GoogleFonts.sora(fontSize: 12, color: AppColors.textSecondary)),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(color: AppColors.textMuted.withOpacity(0.15), borderRadius: BorderRadius.circular(20)),
+                  child: Text(status, style: GoogleFonts.sora(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textSecondary)),
+                ),
+              ]),
+              const SizedBox(height: 14),
+              // Table header (Item/Rate columns intentionally omitted — the
+              // description goes to the Note at the bottom instead, and the
+              // rate is redundant with Amount below).
+              Row(children: [
+                Expanded(flex: 1, child: Text('Qty', style: GoogleFonts.sora(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.textMuted))),
+                Expanded(flex: 2, child: Text('Amount', textAlign: TextAlign.right, style: GoogleFonts.sora(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.textMuted))),
+              ]),
+              const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider(height: 1, color: AppColors.border)),
+              if (items.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Text('No line items on this invoice.', style: GoogleFonts.sora(fontSize: 12, color: AppColors.textSecondary)),
                 )
               else
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 260),
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    padding: EdgeInsets.zero,
-                    itemCount: _invoices.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
-                    itemBuilder: (context, index) {
-                      final node = _invoices[index];
-                      final invoiceId = _invoiceField(node, ['invoiceNumber', 'invoiceNo', 'number', '_id', 'id']);
-                      final amount = _invoiceField(node, ['totalAmount', 'amount', 'total']);
-                      final status = _invoiceField(node, ['status']) ?? 'generated';
-                      final date = _invoiceField(node, ['createdAt', 'date', 'issueDate']);
-                      final fileUrl = _invoiceFileUrl(node);
-                      final isDownloadingThis = _isOpeningDownload && _downloadingInvoiceId == (invoiceId ?? '$index');
-
-                      return Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: AppColors.success.withOpacity(0.08),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppColors.success.withOpacity(0.3)),
-                        ),
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Row(children: [
-                            const Icon(Icons.receipt_long_rounded, color: AppColors.success, size: 16),
-                            const SizedBox(width: 8),
-                            Text('Invoice Details', style: GoogleFonts.sora(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.success)),
-                          ]),
-                          const SizedBox(height: 8),
-                          if (invoiceId != null) _InvoiceDetailLine('Invoice No.', invoiceId),
-                          if (amount != null) _InvoiceDetailLine('Amount', '₹$amount'),
-                          _InvoiceDetailLine('Status', status),
-                          if (date != null) _InvoiceDetailLine('Date', formatInvoiceDate(date)),
-                          if (fileUrl != null) ...[
-                            const SizedBox(height: 10),
-                            GestureDetector(
-                              onTap: _isOpeningDownload ? null : () => _downloadInvoice(fileUrl, invoiceId ?? '$index'),
-                              child: Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.symmetric(vertical: 10),
-                                decoration: BoxDecoration(
-                                  color: AppColors.success.withOpacity(0.15),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Center(
-                                  child: isDownloadingThis
-                                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.success))
-                                      : Row(mainAxisSize: MainAxisSize.min, children: [
-                                    const Icon(Icons.download_rounded, color: AppColors.success, size: 16),
-                                    const SizedBox(width: 6),
-                                    Text('Download Invoice', style: GoogleFonts.sora(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.success)),
-                                  ]),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ]),
-                      );
-                    },
+                for (final it in items) ...[
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Row(children: [
+                      Expanded(flex: 1, child: Text('${invoiceNum(invoiceRawField(it, ['quantity', 'qty'])) ?? 1}', style: GoogleFonts.sora(fontSize: 12.5, color: AppColors.textPrimary))),
+                      Expanded(flex: 2, child: Text(
+                        invoiceMoney(invoiceNum(invoiceRawField(it, ['amount'])) ??
+                            ((invoiceNum(invoiceRawField(it, ['quantity', 'qty'])) ?? 1) * (invoiceNum(invoiceRawField(it, ['rate'])) ?? 0))),
+                        textAlign: TextAlign.right,
+                        style: GoogleFonts.sora(fontSize: 12.5, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                      )),
+                    ]),
                   ),
+                ],
+              const SizedBox(height: 8),
+              _SummaryLine('Subtotal', invoiceMoney(subtotal)),
+              if (taxAmount != null) _SummaryLine(taxPercent != null ? 'Tax (${taxPercent.toStringAsFixed(taxPercent % 1 == 0 ? 0 : 1)}%)' : 'Tax', invoiceMoney(taxAmount)),
+              if (discount != null && discount != 0) _SummaryLine('Discount', '-${invoiceMoney(discount)}'),
+              const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider(height: 1, color: AppColors.border)),
+              _SummaryLine('Total', invoiceMoney(total), bold: true),
+              if (dueDate != null) ...[
+                const SizedBox(height: 10),
+                Text('Due date: ${formatInvoiceDate(dueDate)}', style: GoogleFonts.sora(fontSize: 12, color: AppColors.textSecondary)),
+              ],
+              if (combinedNote != null && combinedNote.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text('Note: $combinedNote', style: GoogleFonts.sora(fontSize: 12, color: AppColors.textSecondary)),
+              ],
+              const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    side: const BorderSide(color: AppColors.border),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  child: Text('Close', style: GoogleFonts.sora(fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
                 ),
+              ),
             ],
-
-            const SizedBox(height: 20),
-            CommonButton(
-              label: _isLoadingInvoice ? 'Please wait…' : 'Done',
-              gradient: AppColors.adminGradient,
-              onTap: _isLoadingInvoice ? () {} : () => Navigator.of(context).pop(),
-            ),
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _InvoiceStepRow extends StatelessWidget {
-  final bool done;
-  final bool loading;
-  final bool failed;
-  final String title;
-  final String subtitle;
-  const _InvoiceStepRow({required this.done, required this.loading, required this.failed, required this.title, required this.subtitle});
+class _SummaryLine extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool bold;
+  const _SummaryLine(this.label, this.value, {this.bold = false});
 
   @override
   Widget build(BuildContext context) {
-    final Color iconColor = failed ? AppColors.warning : (done ? AppColors.success : AppColors.textSecondary);
-    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      SizedBox(
-        width: 24, height: 24,
-        child: loading
-            ? const CircularProgressIndicator(strokeWidth: 2.2, color: AppColors.success)
-            : Icon(
-          failed ? Icons.error_outline_rounded : (done ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded),
-          color: iconColor,
-          size: 22,
-        ),
-      ),
-      const SizedBox(width: 12),
-      Expanded(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title, style: GoogleFonts.sora(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-          const SizedBox(height: 2),
-          Text(subtitle, style: GoogleFonts.sora(fontSize: 11, color: AppColors.textSecondary)),
-        ]),
-      ),
-    ]);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        Text(label, style: GoogleFonts.sora(fontSize: bold ? 14 : 12.5, fontWeight: bold ? FontWeight.w800 : FontWeight.w500, color: bold ? AppColors.textPrimary : AppColors.textSecondary)),
+        Text(value, style: GoogleFonts.sora(fontSize: bold ? 14 : 12.5, fontWeight: bold ? FontWeight.w800 : FontWeight.w700, color: AppColors.textPrimary)),
+      ]),
+    );
   }
 }
 
@@ -1857,6 +2106,7 @@ class _InvoiceDetailLine extends StatelessWidget {
     );
   }
 }
+
 
 // ─────────────────────────────────────────
 // SHARED HELPERS
@@ -2486,6 +2736,20 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
     }
   }
 
+  void _openInvoiceSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _InvoiceQuickActionSheet(
+        clientId: _user.id,
+        clientName: _user.name,
+        budget: _user.budget,
+        accent: widget.accentColor,
+      ),
+    );
+  }
+
   Future<void> _delete() async {
     final ok = await _showDeleteDialog(context, _user.name, _user.email);
     if (!ok || !mounted) return;
@@ -2533,17 +2797,15 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
           _isClient ? 'Client Details' : 'Team Member Details',
           style: GoogleFonts.sora(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white),
         ),
-        // actions: [
-        //   IconButton(
-        //     icon: const Icon(Icons.edit_outlined, size: 20, color: Colors.white),
-        //     onPressed: _isLoading ? null : _openEdit,
-        //   ),
-        //   IconButton(
-        //     icon: const Icon(Icons.delete_outline_rounded, size: 20, color: Colors.white),
-        //     onPressed: _isLoading ? null : _delete,
-        //   ),
-        //   const SizedBox(width: 4),
-        // ],
+        actions: [
+          if (_isClient)
+            IconButton(
+              icon: const Icon(Icons.receipt_long_rounded, color: Colors.white, size: 21),
+              tooltip: 'Invoice',
+              onPressed: _isLoading ? null : _openInvoiceSheet,
+            ),
+          const SizedBox(width: 4),
+        ],
       ),
       body: _isLoading
           ? Center(child: CircularProgressIndicator(strokeWidth: 2, color: accent))
@@ -2605,10 +2867,10 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
                     const SizedBox(height: 14),
                     group,
                   ],
-                  if (_isClient) ...[
-                    const SizedBox(height: 14),
-                    _ClientInvoicesCard(clientId: _user.id, accent: accent),
-                  ],
+                  // if (_isClient) ...[
+                  //   const SizedBox(height: 14),
+                  //   _ClientInvoicesCard(clientId: _user.id, clientName: _user.name, accent: accent),
+                  // ],
                 ],
               ),
             ),
@@ -3048,22 +3310,45 @@ class _PlatformsCard extends StatelessWidget {
             Text('Connected Platforms', style: GoogleFonts.sora(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
             const SizedBox(height: 12),
             Wrap(
-              spacing: 8, runSpacing: 8,
+              spacing: 8,
+              runSpacing: 8,
               children: platforms.map((p) {
-                final meta = _meta[p] ?? _PlatMeta(p, Icons.public_rounded, AppColors.textMuted);
+                final meta = _meta[p] ??
+                    _PlatMeta(
+                      p,
+                      Icons.public_rounded,
+                      AppColors.textMuted,
+                    );
+
                 return Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 9,
+                  ),
                   decoration: BoxDecoration(
-                    color: meta.color.withOpacity(0.08),
+                    color: Colors.white.withOpacity(0.10),
                     borderRadius: BorderRadius.circular(11),
-                    border: Border.all(color: meta.color.withOpacity(0.28)),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.20),
+                    ),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(meta.icon, size: 15, color: meta.color),
+                      Icon(
+                        meta.icon,
+                        size: 15,
+                        color: meta.color,
+                      ),
                       const SizedBox(width: 6),
-                      Text(meta.label, style: GoogleFonts.sora(fontSize: 12, fontWeight: FontWeight.w600, color: meta.color)),
+                      Text(
+                        meta.label,
+                        style: GoogleFonts.sora(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: meta.color,
+                        ),
+                      ),
                     ],
                   ),
                 );
@@ -3088,111 +3373,115 @@ class _PlatMeta {
 // GET /api/admin/invoices/client/:clientId — shown at the bottom of the
 // client detail page, below "Details" / connected platforms etc.
 // ─────────────────────────────────────────
-class _ClientInvoicesCard extends StatefulWidget {
-  final String clientId;
-  final Color accent;
-  const _ClientInvoicesCard({required this.clientId, required this.accent});
-
-  @override
-  State<_ClientInvoicesCard> createState() => _ClientInvoicesCardState();
-}
-
-class _ClientInvoicesCardState extends State<_ClientInvoicesCard> {
-  final _apiService = ApiService();
-
-  bool _isLoading = true;
-  String? _errorMsg;
-  List<Map<String, dynamic>> _invoices = [];
-  bool _isOpeningDownload = false;
-  String? _downloadingInvoiceId;
-
-  @override
-  void initState() {
-    super.initState();
-    _fetchInvoices();
-  }
-
-  Future<void> _fetchInvoices() async {
-    setState(() { _isLoading = true; _errorMsg = null; });
-    try {
-      final res = await _apiService.get('${AppConstants.adminInvoicesByClient}/${widget.clientId}');
-      final invoices = parseInvoiceList(res);
-      if (mounted) setState(() { _invoices = invoices; _isLoading = false; });
-    } catch (e) {
-      if (mounted) setState(() { _errorMsg = _cleanErr(e.toString()); _isLoading = false; });
-    }
-  }
-
-  Future<void> _download(String url, String invoiceId) async {
-    setState(() {
-      _isOpeningDownload = true;
-      _downloadingInvoiceId = invoiceId;
-    });
-    final err = await downloadInvoicePdf(url: url, invoiceId: invoiceId);
-    if (mounted) {
-      if (err != null) _showSuccessSnack(context, err);
-      setState(() {
-        _isOpeningDownload = false;
-        _downloadingInvoiceId = null;
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = widget.accent;
-
-    return SizedBox(
-      width: double.infinity,
-      child: CommonCard(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(children: [
-              Icon(Icons.receipt_long_rounded, size: 17, color: accent),
-              const SizedBox(width: 8),
-              Text('Invoices', style: GoogleFonts.sora(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-              const Spacer(),
-              if (!_isLoading)
-                InkWell(
-                  onTap: _fetchInvoices,
-                  child: Icon(Icons.refresh_rounded, size: 18, color: AppColors.textMuted),
-                ),
-            ]),
-            const SizedBox(height: 12),
-            if (_isLoading)
-              Center(child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                child: CircularProgressIndicator(strokeWidth: 2, color: accent),
-              ))
-            else if (_errorMsg != null)
-              _InvoiceInlineMessage(text: _errorMsg!, isError: true, onRetry: _fetchInvoices)
-            else if (_invoices.isEmpty)
-                _InvoiceInlineMessage(text: 'No invoices generated for this client yet.', isError: false)
-              else
-                Column(
-                  children: [
-                    for (int i = 0; i < _invoices.length; i++) ...[
-                      if (i != 0) const SizedBox(height: 10),
-                      _InvoiceListTile(
-                        node: _invoices[i],
-                        index: i,
-                        accent: accent,
-                        isDownloading: _isOpeningDownload &&
-                            _downloadingInvoiceId == (invoiceField(_invoices[i], ['invoiceNumber', 'invoiceNo', 'number', '_id', 'id']) ?? '$i'),
-                        isAnyDownloading: _isOpeningDownload,
-                        onDownload: _download,
-                      ),
-                    ],
-                  ],
-                ),
-          ],
-        ),
-      ),
-    );
-  }
-}
+// class _ClientInvoicesCard extends StatefulWidget {
+//   final String clientId;
+//   final String clientName;
+//   final Color accent;
+//   const _ClientInvoicesCard({required this.clientId, required this.clientName, required this.accent});
+//
+//   @override
+//   State<_ClientInvoicesCard> createState() => _ClientInvoicesCardState();
+// }
+//
+// class _ClientInvoicesCardState extends State<_ClientInvoicesCard> {
+//   final _apiService = ApiService();
+//
+//   bool _isLoading = true;
+//   String? _errorMsg;
+//   List<Map<String, dynamic>> _invoices = [];
+//   bool _isOpeningDownload = false;
+//   String? _downloadingInvoiceId;
+//
+//   @override
+//   void initState() {
+//     super.initState();
+//     _fetchInvoices();
+//   }
+//
+//   Future<void> _fetchInvoices() async {
+//     setState(() { _isLoading = true; _errorMsg = null; });
+//     try {
+//       final res = await _apiService.get('${AppConstants.adminInvoicesByClient}/${widget.clientId}');
+//       final invoices = parseInvoiceList(res);
+//       if (mounted) setState(() { _invoices = invoices; _isLoading = false; });
+//     } catch (e) {
+//       if (mounted) setState(() { _errorMsg = _cleanErr(e.toString()); _isLoading = false; });
+//     }
+//   }
+//
+//   // Generates the invoice PDF on-device and opens it — the backend never
+//   // returns a file URL for invoices, so `node` (the invoice data itself) is
+//   // what gets turned into the PDF, not a downloaded file.
+//   Future<void> _download(Map<String, dynamic> node, String invoiceId) async {
+//     setState(() {
+//       _isOpeningDownload = true;
+//       _downloadingInvoiceId = invoiceId;
+//     });
+//     final err = await downloadInvoicePdf(invoice: node, invoiceId: invoiceId, clientName: widget.clientName);
+//     if (mounted) {
+//       if (err != null) _showSuccessSnack(context, err);
+//       setState(() {
+//         _isOpeningDownload = false;
+//         _downloadingInvoiceId = null;
+//       });
+//     }
+//   }
+//
+//   @override
+//   Widget build(BuildContext context) {
+//     final accent = widget.accent;
+//
+//     return SizedBox(
+//       width: double.infinity,
+//       child: CommonCard(
+//         padding: const EdgeInsets.all(16),
+//         child: Column(
+//           crossAxisAlignment: CrossAxisAlignment.start,
+//           children: [
+//             Row(children: [
+//               Icon(Icons.receipt_long_rounded, size: 17, color: accent),
+//               const SizedBox(width: 8),
+//               Text('Invoices', style: GoogleFonts.sora(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+//               const Spacer(),
+//               if (!_isLoading)
+//                 InkWell(
+//                   onTap: _fetchInvoices,
+//                   child: Icon(Icons.refresh_rounded, size: 18, color: AppColors.textMuted),
+//                 ),
+//             ]),
+//             const SizedBox(height: 12),
+//             if (_isLoading)
+//               Center(child: Padding(
+//                 padding: const EdgeInsets.symmetric(vertical: 12),
+//                 child: CircularProgressIndicator(strokeWidth: 2, color: accent),
+//               ))
+//             else if (_errorMsg != null)
+//               _InvoiceInlineMessage(text: _errorMsg!, isError: true, onRetry: _fetchInvoices)
+//             else if (_invoices.isEmpty)
+//                 _InvoiceInlineMessage(text: 'No invoices generated for this client yet.', isError: false)
+//               else
+//                 Column(
+//                   children: [
+//                     for (int i = 0; i < _invoices.length; i++) ...[
+//                       if (i != 0) const SizedBox(height: 10),
+//                       _InvoiceListTile(
+//                         node: _invoices[i],
+//                         index: i,
+//                         accent: accent,
+//                         isDownloading: _isOpeningDownload &&
+//                             _downloadingInvoiceId == (invoiceField(_invoices[i], ['invoiceNumber', 'invoiceNo', 'number', '_id', 'id']) ?? '$i'),
+//                         isAnyDownloading: _isOpeningDownload,
+//                         onDownload: _download,
+//                       ),
+//                     ],
+//                   ],
+//                 ),
+//           ],
+//         ),
+//       ),
+//     );
+//   }
+// }
 
 class _InvoiceInlineMessage extends StatelessWidget {
   final String text;
@@ -3230,7 +3519,7 @@ class _InvoiceListTile extends StatelessWidget {
   final Color accent;
   final bool isDownloading;
   final bool isAnyDownloading;
-  final Future<void> Function(String url, String invoiceId) onDownload;
+  final Future<void> Function(Map<String, dynamic> node, String invoiceId) onDownload;
 
   const _InvoiceListTile({
     required this.node,
@@ -3247,7 +3536,6 @@ class _InvoiceListTile extends StatelessWidget {
     final amount = invoiceField(node, ['totalAmount', 'amount', 'total']);
     final status = invoiceField(node, ['status']) ?? 'generated';
     final date = invoiceField(node, ['createdAt', 'date', 'issueDate']);
-    final fileUrl = invoiceFileUrl(node);
 
     return Container(
       width: double.infinity,
@@ -3262,29 +3550,27 @@ class _InvoiceListTile extends StatelessWidget {
         if (amount != null) _InvoiceDetailLine('Amount', '₹$amount'),
         _InvoiceDetailLine('Status', status),
         if (date != null) _InvoiceDetailLine('Date', formatInvoiceDate(date)),
-        if (fileUrl != null) ...[
-          const SizedBox(height: 10),
-          GestureDetector(
-            onTap: isAnyDownloading ? null : () => onDownload(fileUrl, invoiceId ?? '$index'),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              decoration: BoxDecoration(
-                color: accent.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Center(
-                child: isDownloading
-                    ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: accent))
-                    : Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.download_rounded, color: accent, size: 16),
-                  const SizedBox(width: 6),
-                  Text('Download Invoice', style: GoogleFonts.sora(fontSize: 12, fontWeight: FontWeight.w700, color: accent)),
-                ]),
-              ),
+        const SizedBox(height: 10),
+        GestureDetector(
+          onTap: isAnyDownloading ? null : () => onDownload(node, invoiceId ?? '$index'),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            decoration: BoxDecoration(
+              color: accent.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Center(
+              child: isDownloading
+                  ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: accent))
+                  : Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.download_rounded, color: accent, size: 16),
+                const SizedBox(width: 6),
+                Text('Download Invoice', style: GoogleFonts.sora(fontSize: 12, fontWeight: FontWeight.w700, color: accent)),
+              ]),
             ),
           ),
-        ],
+        ),
       ]),
     );
   }

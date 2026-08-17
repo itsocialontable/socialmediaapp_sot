@@ -15,10 +15,15 @@ class ClientCalendarRepository {
 
   // ─────────────────────────────────────────────────────────────────────────
   // GET /api/client/content-calendar
-  // Optional query params: month, year  (e.g. ?month=6&year=2025)
+  // Query param: month  (single combined value, e.g. ?month=2026-07)
   // ─────────────────────────────────────────────────────────────────────────
 
   /// Fetches the content calendar for [month]/[year].
+  ///
+  /// Sends a single combined `month` query param in `YYYY-MM` format
+  /// (e.g. `2026-07`) instead of separate `month` and `year` params,
+  /// since sending them separately caused the backend to calculate the
+  /// wrong date range.
   ///
   /// Returns a map of  day-of-month → List<ClientCalendarPost>
   /// so the UI can instantly look up posts for any selected date.
@@ -26,9 +31,12 @@ class ClientCalendarRepository {
     required int month,
     required int year,
   }) async {
+    final monthParam =
+        '$year-${month.toString().padLeft(2, '0')}'; // e.g. 2026-07
+
     final raw = await _api.get(
       '/api/client/content-calendar',
-      queryParams: {'month': month, 'year': year},
+      queryParams: {'month': monthParam},
     );
 
     _assertSuccess(raw, 'Failed to fetch calendar.');

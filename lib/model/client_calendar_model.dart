@@ -23,8 +23,12 @@ class ClientCalendarPost {
 
   factory ClientCalendarPost.fromJson(Map<String, dynamic> json) {
     DateTime? scheduledAt;
-    final rawDate =
-        json['scheduledAt'] ?? json['scheduledDate'] ?? json['date'];
+    // Backend sends the field as "scheduleAt" (no 'd'), keep older keys as
+    // fallback in case other endpoints use a different naming.
+    final rawDate = json['scheduleAt'] ??
+        json['scheduledAt'] ??
+        json['scheduledDate'] ??
+        json['date'];
     if (rawDate != null) {
       scheduledAt = DateTime.tryParse(rawDate.toString());
     }
@@ -43,10 +47,14 @@ class ClientCalendarPost {
       id: json['_id'] as String? ?? '',
       title: json['title'] as String? ??
           json['postTitle'] as String? ??
+          json['content'] as String? ??
           'Untitled Post',
-      platform: json['platform'] as String? ?? '',
+      platform: (json['platforms'] is List &&
+          (json['platforms'] as List).isNotEmpty)
+          ? (json['platforms'] as List).first.toString()
+          : (json['platform'] as String? ?? ''),
       status: json['status'] as String? ?? 'scheduled',
-      caption: json['caption'] as String?,
+      caption: json['caption'] as String? ?? json['content'] as String?,
       scheduledTime: scheduledTime,
       scheduledAt: scheduledAt,
     );
