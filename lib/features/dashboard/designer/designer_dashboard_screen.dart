@@ -187,38 +187,38 @@ class _DesignerDashboardScreenState extends State<DesignerDashboardScreen> {
                                 color: AppColors.textSecondary)),
                     ],
                   ),
-                  const Spacer(),
-                  Stack(
-                    children: [
-                      Container(
-                        width: 40, height: 40,
-                        decoration: BoxDecoration(
-                            gradient: AppColors.designerGradient,
-                            shape: BoxShape.circle),
-                        child: Center(
-                          child: Text(
-                            auth.userName.isNotEmpty
-                                ? auth.userName[0].toUpperCase()
-                                : 'D',
-                            style: GoogleFonts.sora(
-                                fontWeight: FontWeight.w700,
-                                color: Colors.white),
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        bottom: 0, right: 0,
-                        child: Container(
-                          width: 12, height: 12,
-                          decoration: BoxDecoration(
-                              color: AppColors.success,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                  color: AppColors.background, width: 2)),
-                        ),
-                      ),
-                    ],
-                  ),
+                  // const Spacer(),
+                  // Stack(
+                  //   children: [
+                  //     Container(
+                  //       width: 40, height: 40,
+                  //       decoration: BoxDecoration(
+                  //           gradient: AppColors.designerGradient,
+                  //           shape: BoxShape.circle),
+                  //       child: Center(
+                  //         child: Text(
+                  //           auth.userName.isNotEmpty
+                  //               ? auth.userName[0].toUpperCase()
+                  //               : 'D',
+                  //           style: GoogleFonts.sora(
+                  //               fontWeight: FontWeight.w700,
+                  //               color: Colors.white),
+                  //         ),
+                  //       ),
+                  //     ),
+                  //     Positioned(
+                  //       bottom: 0, right: 0,
+                  //       child: Container(
+                  //         width: 12, height: 12,
+                  //         decoration: BoxDecoration(
+                  //             color: AppColors.success,
+                  //             shape: BoxShape.circle,
+                  //             border: Border.all(
+                  //                 color: AppColors.background, width: 2)),
+                  //       ),
+                  //     ),
+                  //   ],
+                  // ),
                 ],
               ).animate().fadeIn(),
             ),

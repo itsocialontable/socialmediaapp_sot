@@ -3,7 +3,7 @@
 class AppConstants {
   // Base URL
   //static const String baseUrl = 'https://eradicate-switch-catfight.ngrok-free.dev';
-   static const String baseUrl = "https://gc360smm.duckdns.org";
+  static const String baseUrl = "https://gc360smm.duckdns.org";
 
   // ── Admin ──────────────────────────────────────────────────────────────
   static const String adminDashboard = '/api/admin/dashboard';
@@ -68,6 +68,11 @@ class AppConstants {
   static const String redirectUri =
       "https://gc360smm.duckdns.org/auth/callback";
   static const String publishedPosts = '/api/posts/published';
+
+  /// GET /api/posts/overviewAnalytics
+  /// Query params: clientId (optional) — scope to one client.
+  /// SMM (own data) or Admin (any client / agency-wide when clientId omitted).
+  static const String postsOverviewAnalytics = '/api/posts/overviewAnalytics';
 
   // ── Secure Storage Keys ────────────────────────────────────────────────
   static const String tokenKey       = 'token';

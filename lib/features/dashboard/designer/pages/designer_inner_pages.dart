@@ -108,10 +108,244 @@ class _DesignerTasksPageState extends State<DesignerTasksPage> {
         itemCount: projects.length,
         itemBuilder: (_, i) => Padding(
           padding: const EdgeInsets.only(bottom: 10),
-          child: _ProjectCard(project: projects[i])
+          child: GestureDetector(
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => DesignerTaskDetailPage(project: projects[i]),
+              ),
+            ),
+            child: _ProjectCard(project: projects[i]),
+          )
               .animate(delay: Duration(milliseconds: 60 * i))
               .fadeIn()
               .slideX(begin: 0.15, end: 0),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────
+// TASK DETAIL PAGE — shown when a task card is tapped
+// Read-only view with all task + client information
+// ─────────────────────────────────────────
+class DesignerTaskDetailPage extends StatelessWidget {
+  final GdProject project;
+  const DesignerTaskDetailPage({super.key, required this.project});
+
+  Color get _priorityColor {
+    switch (project.priority.toLowerCase()) {
+      case 'high':
+        return AppColors.error;
+      case 'medium':
+        return AppColors.warning;
+      default:
+        return AppColors.success;
+    }
+  }
+
+  String _fmt(DateTime? d, String fallback) {
+    if (d == null) return fallback;
+    return DateFormat('MMM d, yyyy • h:mm a').format(d.toLocal());
+  }
+
+  Widget _sectionLabel(String t, {IconData? icon}) => Padding(
+    padding: const EdgeInsets.only(bottom: 10, top: 22),
+    child: Row(children: [
+      if (icon != null) ...[
+        Icon(icon, size: 14, color: AppColors.designerColor),
+        const SizedBox(width: 6),
+      ],
+      Text(t,
+          style: GoogleFonts.sora(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textSecondary,
+              letterSpacing: 0.2)),
+    ]),
+  );
+
+  Widget _infoRow(IconData icon, String label, String value) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceLight,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(children: [
+        Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+              color: AppColors.designerColor.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(10)),
+          child: Icon(icon, size: 16, color: AppColors.designerColor),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label,
+                  style:
+                  GoogleFonts.sora(fontSize: 10.5, color: AppColors.textMuted)),
+              const SizedBox(height: 2),
+              Text(value,
+                  style: GoogleFonts.sora(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary)),
+            ],
+          ),
+        ),
+      ]),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.surface,
+      appBar: AppBar(
+        backgroundColor: AppColors.surface,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_rounded,
+              color: AppColors.textSecondary),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: ShaderMask(
+          shaderCallback: (b) => AppColors.designerGradient.createShader(b),
+          child: Text('Task Details',
+              style: GoogleFonts.sora(
+                  fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white)),
+        ),
+        bottom: const PreferredSize(
+            preferredSize: Size.fromHeight(1),
+            child: Divider(color: AppColors.border, height: 1)),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Header summary card ───────────────────────────
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                gradient: AppColors.designerGradient,
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(project.title.isNotEmpty ? project.title : 'Untitled Task',
+                      style: GoogleFonts.sora(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white)),
+                  const SizedBox(height: 6),
+                  Text(
+                      project.designType.isNotEmpty
+                          ? project.designType
+                          : 'Design Task',
+                      style: GoogleFonts.sora(fontSize: 12, color: Colors.white70)),
+                  const SizedBox(height: 16),
+                  Wrap(spacing: 8, runSpacing: 8, children: [
+                    Container(
+                      padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.18),
+                          borderRadius: BorderRadius.circular(8)),
+                      child: Text(
+                          project.status.isNotEmpty ? project.status : 'Pending',
+                          style: GoogleFonts.sora(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white)),
+                    ),
+                    Container(
+                      padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.18),
+                          borderRadius: BorderRadius.circular(8)),
+                      child: Text(
+                          '${project.priority.isNotEmpty ? project.priority : 'Normal'} Priority',
+                          style: GoogleFonts.sora(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white)),
+                    ),
+                  ]),
+                  if (project.progressPercentage > 0) ...[
+                    const SizedBox(height: 16),
+                    Row(children: [
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: LinearProgressIndicator(
+                            value: project.progressPercentage / 100,
+                            backgroundColor: Colors.white.withOpacity(0.2),
+                            valueColor:
+                            const AlwaysStoppedAnimation<Color>(Colors.white),
+                            minHeight: 6,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text('${project.progressPercentage}%',
+                          style: GoogleFonts.sora(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white)),
+                    ]),
+                  ],
+                ],
+              ),
+            ).animate().fadeIn(),
+
+            // ── Task Information ──────────────────────────────
+            _sectionLabel('Task Information', icon: Icons.info_outline_rounded),
+            _infoRow(Icons.category_rounded, 'Design Type',
+                project.designType.isNotEmpty ? project.designType : 'Not specified'),
+            _infoRow(Icons.flag_rounded, 'Priority',
+                project.priority.isNotEmpty ? project.priority : 'Not specified'),
+            _infoRow(Icons.timelapse_rounded, 'Status',
+                project.status.isNotEmpty ? project.status : 'Pending'),
+            _infoRow(Icons.event_rounded, 'Deadline',
+                _fmt(project.deadline, 'No deadline set')),
+            _infoRow(Icons.calendar_today_rounded, 'Created On',
+                _fmt(project.createdAt, 'Unknown')),
+
+            // ── Client Information ────────────────────────────
+            _sectionLabel('Client Information', icon: Icons.business_rounded),
+            _infoRow(
+                Icons.apartment_rounded,
+                'Company',
+                project.client.companyName.isNotEmpty
+                    ? project.client.companyName
+                    : 'Not specified'),
+            _infoRow(
+                Icons.person_outline_rounded,
+                'Contact Name',
+                project.client.name.isNotEmpty
+                    ? project.client.name
+                    : 'Not specified'),
+            _infoRow(
+                Icons.email_outlined,
+                'Email',
+                project.client.email.isNotEmpty
+                    ? project.client.email
+                    : 'Not specified'),
+
+            const SizedBox(height: 12),
+          ],
         ),
       ),
     );

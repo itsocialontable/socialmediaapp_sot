@@ -9,6 +9,7 @@ import 'core/providers/client_design_project_provider.dart';
 import 'core/providers/gd_project_provider.dart';
 import 'core/providers/social_provider.dart';
 import 'core/providers/smm_design_project_provider.dart';
+import 'core/providers/posts_analytics_provider.dart';
 import 'core/router/app_router.dart';
 import 'core/services/oauth_deep_link_service.dart';
 import 'core/services/update_service.dart';
@@ -88,6 +89,7 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => ClientDesignProjectProvider()),
         ChangeNotifierProvider(create: (_) => ClientCalendarProvider()),
         ChangeNotifierProvider(create: (_) => SmmDesignProjectProvider()),
+        ChangeNotifierProvider(create: (_) => PostsAnalyticsProvider()),
       ],
       child: Builder(
         builder: (context) {
